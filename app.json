@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "အလုပ်သမားစာရင်း",
+    "slug": "worker-name-list",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A0A12",
+    "android": {
+      "package": "com.kyaw.workernamelist",
+      "versionCode": 1,
+      "adaptiveIcon": { "backgroundColor": "#0A0A12" }
+    }
+  }
+}
