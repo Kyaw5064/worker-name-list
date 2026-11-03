@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -40,3 +42,11 @@ jobs:
         with:
           name: worker-name-list-apk
           path: build-app/android/app/build/outputs/apk/release/app-release.apk
+      - name: Publish APK to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp build-app/android/app/build/outputs/apk/release/app-release.apk worker-name-list.apk
+          gh release create "v1.0.${{ github.run_number }}" worker-name-list.apk \
+            --title "အလုပ်သမားစာရင်း v1.0.${{ github.run_number }}" \
+            --notes "APK ကိုနှိပ်ပြီး download လုပ်ပြီး install လုပ်ပါ။" --latest
