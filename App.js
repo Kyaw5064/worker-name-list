@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, SectionList, TouchableOpacity, TextInput, Modal,
-  ScrollView, Alert, StatusBar, Linking, SafeAreaView, KeyboardAvoidingView, Platform,
+  View, Text, StyleSheet, SectionList, TouchableOpacity, TextInput, Modal, ScrollView, Alert,
+  StatusBar, Linking, SafeAreaView, KeyboardAvoidingView, Platform, Share, Switch,
+  LayoutAnimation, UIManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  try { UIManager.setLayoutAnimationEnabledExperimental(true); } catch (e) {}
+}
 
 /* ===================== THEME ===================== */
 const C = {
@@ -14,61 +19,109 @@ const C = {
 };
 const KEY = 'betagro_roster_v1';
 
+/* ===================== ATTENDANCE STATUS ===================== */
+const STATUS = {
+  absent: { icon: 'close-circle', color: '#F87171' },
+  leave: { icon: 'document-text', color: '#FB923C' },
+  off: { icon: 'bed', color: '#60A5FA' },
+  late: { icon: 'alarm', color: '#E879F9' },
+  present: { icon: 'checkmark-circle', color: '#34D399' },
+  none: { icon: 'ellipse-outline', color: '#8C8CA8' },
+};
+const ORDER = ['absent', 'leave', 'off', 'late', 'present', 'none']; // top → bottom
+const SEG = ['present', 'absent', 'leave', 'off', 'late']; // buttons on each card
+
 /* ===================== UI TEXT (3 LANG) ===================== */
 const T = {
   mm: {
-    title: 'ဝန်ထမ်းစာရင်း', sub: 'Betagro • နခွန်ပထုံ ဝက်သတ်ရုံ', s1: 'ဆိုင်း ၁', s2: 'ဆိုင်း ၂',
+    title: 'အလုပ်သမားစာရင်း', sub: 'Betagro • နခွန်ပထုံ ဝက်သတ်ရုံ', s1: 'ဆိုင်း ၁', s2: 'ဆိုင်း ၂',
     day: 'မနက်ဆိုင်း', night: 'ညနေ/ညဆိုင်း', search: 'နာမည် သို့ ID ဖြင့်ရှာပါ...', all: 'အားလုံး',
     busR: 'ရာဘာစက်ရုံကား', busP: 'ငါးဆိပ်ကား', moved: 'ဆိုင်းပြောင်း', preg: 'ကိုယ်ဝန်ဆောင်', lead: 'ခေါင်းဆောင်',
     total: 'စုစုပေါင်း', ppl: 'ယောက်', job: 'တာဝန်', time: 'အလုပ်ချိန်', id: 'ဝန်ထမ်းနံပါတ်', bus: 'ကားလိုင်း',
-    noBus: 'ကိုယ်တိုင်လာ', new: 'အသစ်', leave: 'မီးဖွားခွင့်', from1: 'ဆိုင်း၁ မှ ပြောင်းလာ', from2: 'ဆိုင်း၂ မှ ပြောင်းလာ',
-    date: 'ရက်စွဲ', notice: 'စည်းကမ်းနှင့် ဆက်သွယ်ရန်', callShift: 'ဆိုင်းခေါင်းဆောင်', callLine: 'လိုင်းခေါင်းဆောင်',
-    groupJob: 'တာဝန်အလိုက်', list: 'စာရင်း', pinTitle: 'Admin PIN ထည့်ပါ', pinWrong: 'PIN မှားနေသည်',
+    noBus: 'ကိုယ်တိုင်လာ', new: 'အသစ်', leaveM: 'မီးဖွားခွင့်', from1: 'ဆိုင်း၁ မှ ပြောင်းလာ', from2: 'ဆိုင်း၂ မှ ပြောင်းလာ',
+    notice: 'စည်းကမ်းနှင့် ဆက်သွယ်ရန်', callShift: 'ဆိုင်းခေါင်းဆောင်', callLine: 'လိုင်းခေါင်းဆောင်',
+    vStatus: 'တက်ရောက်မှုအလိုက်', vJob: 'တာဝန်အလိုက်', vList: 'စာရင်းအတိုင်း',
+    pinTitle: 'Admin PIN ထည့်ပါ', pinWrong: 'PIN မှားနေသည်',
     enter: 'ဝင်မည်', cancel: 'မလုပ်တော့', save: 'သိမ်းမည်', edit: 'ပြင်မည်', del: 'ဖျက်မည်',
-    delQ: 'ဒီဝန်ထမ်းကို ဖျက်မှာ သေချာလား?', move: 'ဆိုင်းပြောင်းမည်', add: 'ဝန်ထမ်းအသစ်ထည့်',
+    delQ: 'ဒီဝန်ထမ်းကို ဖျက်မှာ သေချာလား?', move: 'ဆိုင်းပြောင်း', add: 'ဝန်ထမ်းအသစ်ထည့်',
     nameTh: 'နာမည် (ထိုင်း)', nameMm: 'နာမည် (မြန်မာ)', nameEn: 'နာမည် (English)', shiftLbl: 'ဆိုင်း',
     noteLbl: 'အခြေအနေ', none: 'မရှိ', settings: 'Admin ဆက်တင်', newPin: 'PIN အသစ် (ပြောင်းချင်မှ ဖြည့်)',
-    reset: 'မူရင်းစာရင်းသို့ ပြန်ထားမည်', resetQ: 'ပြင်ထားသမျှ ပျက်မည်။ သေချာလား?', shiftSup: 'ဆိုင်းခေါင်းဆောင် ဖုန်း',
-    lineSup: 'လိုင်းခေါင်းဆောင် ဖုန်း', empty: 'ရှာမတွေ့ပါ', required: 'ID နှင့် နာမည်တစ်ခုခု လိုအပ်သည်',
-    yes: 'ဟုတ်ကဲ့', idExists: 'ဒီ ID ရှိပြီးသားပါ', names: 'နာမည် ၃ ဘာသာ', rulesLbl: 'စည်းကမ်း',
-    logout: 'Admin မှ ထွက်မည်', saved: 'သိမ်းပြီးပါပြီ', adminMode: 'ADMIN MODE', dateFmt: 'ရက်စွဲ (YYYY-MM-DD)',
-    jobAll: 'တာဝန် ၃ ဘာသာ', tapHint: 'နာမည်ကိုနှိပ်ပြီး အသေးစိတ်ကြည့်ပါ',
+    reset: 'မူရင်းဝန်ထမ်းစာရင်းသို့ ပြန်ထားမည်', resetQ: 'ဝန်ထမ်းစာရင်း ပြင်ထားသမျှ ပျက်မည်။ သေချာလား?',
+    shiftSup: 'ဆိုင်းခေါင်းဆောင် ဖုန်း', lineSup: 'လိုင်းခေါင်းဆောင် ဖုန်း', empty: 'ရှာမတွေ့ပါ',
+    required: 'ID နှင့် နာမည်တစ်ခုခု လိုအပ်သည်', yes: 'ဟုတ်ကဲ့', idExists: 'ဒီ ID ရှိပြီးသားပါ',
+    names: 'နာမည် ၃ ဘာသာ', rulesLbl: 'စည်းကမ်း', logout: 'Admin မှ ထွက်မည်', saved: 'သိမ်းပြီးပါပြီ',
+    adminMode: 'ADMIN MODE', jobAll: 'တာဝန် ၃ ဘာသာ', tapHint: 'ခလုတ်နှိပ်ပြီး တက်ရောက်မှုမှတ်ပါ',
+    today: 'ယနေ့', attTitle: 'ယနေ့ တက်ရောက်မှု', marked: 'မှတ်ပြီး', allPresent: 'ကျန်သူအားလုံး လာ',
+    allPresentQ: 'မမှတ်ရသေးသူ အားလုံးကို "အလုပ်လာ" လို့ မှတ်မလား?', share: 'ပို့မည်', clearDay: 'ရှင်းမည်',
+    clearDayQ: 'ဒီရက် ဒီဆိုင်းရဲ့ မှတ်ထားတာတွေ အကုန်ဖျက်မလား?', locked: 'Admin သာ တက်ရောက်မှု မှတ်နိုင်သည်',
+    lockAtt: 'Admin သာ တက်ရောက်မှု မှတ်ခွင့်ရှိမည်', clearAll: 'တက်ရောက်မှု မှတ်တမ်းအားလုံး ဖျက်မည်',
+    clearAllQ: 'ရက်အားလုံးရဲ့ တက်ရောက်မှု မှတ်တမ်း ပျက်မည်။ သေချာလား?', note: 'မှတ်ချက်',
+    notePh: 'ဥပမာ – နေမကောင်း၊ ဆေးခန်းသွား...', month: 'ဒီလ စာရင်း', week: '၇ ရက် မှတ်တမ်း',
+    status: 'ယနေ့ အခြေအနေ', nothing: 'မှတ်ရန် မရှိတော့ပါ', reportBy: 'အလုပ်သမားစာရင်း App',
+    st: { present: 'အလုပ်လာ', absent: 'အလုပ်ပျက်', leave: 'ခွင့်ယူ', off: 'နား', late: 'နောက်ကျ', none: 'မမှတ်ရသေး' },
+    sec: { present: 'အလုပ်လာသူ', absent: 'အလုပ်ပျက်သူ', leave: 'ခွင့်ယူသူ', off: 'နားသူ', late: 'နောက်ကျသူ', none: 'မမှတ်ရသေးသူ' },
+    short: { present: 'လာ', absent: 'ပျက်', leave: 'ခွင့်', off: 'နား', late: 'နောက်ကျ' },
+    wd: ['တနင်္ဂနွေ', 'တနင်္လာ', 'အင်္ဂါ', 'ဗုဒ္ဓဟူး', 'ကြာသပတေး', 'သောကြာ', 'စနေ'],
   },
   th: {
     title: 'รายชื่อพนักงาน', sub: 'เบทาโกร • โรงฆ่าสุกรนครปฐม', s1: 'กะ 1', s2: 'กะ 2',
     day: 'กะเช้า', night: 'กะบ่าย-ดึก', search: 'ค้นหาชื่อหรือรหัส...', all: 'ทั้งหมด',
     busR: 'สายรถโรงยาง', busP: 'สายรถแพปลา', moved: 'ย้ายกะ', preg: 'ตั้งครรภ์', lead: 'หัวหน้า',
     total: 'ทั้งหมด', ppl: 'คน', job: 'จุดงาน', time: 'เวลาทำงาน', id: 'รหัสพนักงาน', bus: 'สายรถ',
-    noBus: 'มาเอง', new: 'คนใหม่', leave: 'ลาคลอด', from1: 'ย้ายมาจากกะ 1', from2: 'ย้ายมาจากกะ 2',
-    date: 'ประจำวันที่', notice: 'ข้อปฏิบัติ & ติดต่อ', callShift: 'หัวหน้ากะ', callLine: 'หัวหน้าสาย',
-    groupJob: 'ตามจุดงาน', list: 'รายชื่อ', pinTitle: 'ใส่ PIN แอดมิน', pinWrong: 'PIN ไม่ถูกต้อง',
+    noBus: 'มาเอง', new: 'คนใหม่', leaveM: 'ลาคลอด', from1: 'ย้ายมาจากกะ 1', from2: 'ย้ายมาจากกะ 2',
+    notice: 'ข้อปฏิบัติ & ติดต่อ', callShift: 'หัวหน้ากะ', callLine: 'หัวหน้าสาย',
+    vStatus: 'ตามสถานะ', vJob: 'ตามจุดงาน', vList: 'ตามลำดับ',
+    pinTitle: 'ใส่ PIN แอดมิน', pinWrong: 'PIN ไม่ถูกต้อง',
     enter: 'เข้าสู่ระบบ', cancel: 'ยกเลิก', save: 'บันทึก', edit: 'แก้ไข', del: 'ลบ',
     delQ: 'ยืนยันลบพนักงานคนนี้?', move: 'ย้ายกะ', add: 'เพิ่มพนักงาน',
     nameTh: 'ชื่อ (ไทย)', nameMm: 'ชื่อ (พม่า)', nameEn: 'ชื่อ (อังกฤษ)', shiftLbl: 'กะ',
     noteLbl: 'สถานะ', none: 'ไม่มี', settings: 'ตั้งค่าแอดมิน', newPin: 'PIN ใหม่ (ใส่เมื่อต้องการเปลี่ยน)',
-    reset: 'คืนค่ารายชื่อเดิม', resetQ: 'ข้อมูลที่แก้ไขจะหายทั้งหมด ยืนยัน?', shiftSup: 'เบอร์หัวหน้ากะ',
-    lineSup: 'เบอร์หัวหน้าสาย', empty: 'ไม่พบข้อมูล', required: 'ต้องมีรหัสและชื่ออย่างน้อยหนึ่งภาษา',
-    yes: 'ยืนยัน', idExists: 'รหัสนี้มีอยู่แล้ว', names: 'ชื่อ 3 ภาษา', rulesLbl: 'ข้อปฏิบัติ',
-    logout: 'ออกจากแอดมิน', saved: 'บันทึกแล้ว', adminMode: 'โหมดแอดมิน', dateFmt: 'วันที่ (YYYY-MM-DD)',
-    jobAll: 'จุดงาน 3 ภาษา', tapHint: 'แตะชื่อเพื่อดูรายละเอียด',
+    reset: 'คืนค่ารายชื่อพนักงานเดิม', resetQ: 'รายชื่อที่แก้ไขจะหายทั้งหมด ยืนยัน?',
+    shiftSup: 'เบอร์หัวหน้ากะ', lineSup: 'เบอร์หัวหน้าสาย', empty: 'ไม่พบข้อมูล',
+    required: 'ต้องมีรหัสและชื่ออย่างน้อยหนึ่งภาษา', yes: 'ยืนยัน', idExists: 'รหัสนี้มีอยู่แล้ว',
+    names: 'ชื่อ 3 ภาษา', rulesLbl: 'ข้อปฏิบัติ', logout: 'ออกจากแอดมิน', saved: 'บันทึกแล้ว',
+    adminMode: 'โหมดแอดมิน', jobAll: 'จุดงาน 3 ภาษา', tapHint: 'แตะปุ่มเพื่อเช็คชื่อ',
+    today: 'วันนี้', attTitle: 'การมาทำงาน', marked: 'บันทึกแล้ว', allPresent: 'ที่เหลือมาทั้งหมด',
+    allPresentQ: 'บันทึกคนที่ยังไม่เช็คทั้งหมดเป็น "มาทำงาน"?', share: 'ส่งรายงาน', clearDay: 'ล้าง',
+    clearDayQ: 'ลบการเช็คชื่อของกะนี้ในวันนี้ทั้งหมด?', locked: 'เฉพาะแอดมินเท่านั้นที่เช็คชื่อได้',
+    lockAtt: 'ให้เฉพาะแอดมินเช็คชื่อ', clearAll: 'ลบประวัติการเช็คชื่อทั้งหมด',
+    clearAllQ: 'ประวัติการเช็คชื่อทุกวันจะหายไป ยืนยัน?', note: 'หมายเหตุ',
+    notePh: 'เช่น ป่วย, ไปหาหมอ...', month: 'สรุปเดือนนี้', week: 'ย้อนหลัง 7 วัน',
+    status: 'สถานะวันนี้', nothing: 'ไม่มีคนที่ต้องเช็คแล้ว', reportBy: 'แอปรายชื่อพนักงาน',
+    st: { present: 'มาทำงาน', absent: 'ขาดงาน', leave: 'ลา', off: 'หยุด', late: 'มาสาย', none: 'ยังไม่เช็ค' },
+    sec: { present: 'มาทำงาน', absent: 'ขาดงาน', leave: 'ลางาน', off: 'วันหยุด', late: 'มาสาย', none: 'ยังไม่เช็คชื่อ' },
+    short: { present: 'มา', absent: 'ขาด', leave: 'ลา', off: 'หยุด', late: 'สาย' },
+    wd: ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'],
   },
   en: {
-    title: 'Staff Roster', sub: 'Betagro • Nakhon Pathom Swine Slaughterhouse', s1: 'Shift 1', s2: 'Shift 2',
+    title: 'Worker List', sub: 'Betagro • Nakhon Pathom Swine Slaughterhouse', s1: 'Shift 1', s2: 'Shift 2',
     day: 'Morning shift', night: 'Evening/Night shift', search: 'Search name or ID...', all: 'All',
     busR: 'Rubber Factory Bus', busP: 'Fish Pier Bus', moved: 'Moved', preg: 'Pregnant', lead: 'Supervisor',
     total: 'Total', ppl: 'people', job: 'Job', time: 'Work hours', id: 'Employee ID', bus: 'Bus route',
-    noBus: 'Own transport', new: 'New', leave: 'Maternity leave', from1: 'Moved from Shift 1', from2: 'Moved from Shift 2',
-    date: 'Date', notice: 'Rules & Contacts', callShift: 'Shift Supervisor', callLine: 'Line Supervisor',
-    groupJob: 'By job', list: 'List', pinTitle: 'Enter Admin PIN', pinWrong: 'Wrong PIN',
+    noBus: 'Own transport', new: 'New', leaveM: 'Maternity leave', from1: 'Moved from Shift 1', from2: 'Moved from Shift 2',
+    notice: 'Rules & Contacts', callShift: 'Shift Supervisor', callLine: 'Line Supervisor',
+    vStatus: 'By status', vJob: 'By job', vList: 'Sheet order',
+    pinTitle: 'Enter Admin PIN', pinWrong: 'Wrong PIN',
     enter: 'Login', cancel: 'Cancel', save: 'Save', edit: 'Edit', del: 'Delete',
     delQ: 'Delete this worker?', move: 'Move shift', add: 'Add worker',
     nameTh: 'Name (Thai)', nameMm: 'Name (Myanmar)', nameEn: 'Name (English)', shiftLbl: 'Shift',
     noteLbl: 'Status', none: 'None', settings: 'Admin Settings', newPin: 'New PIN (only to change)',
-    reset: 'Reset to original list', resetQ: 'All edits will be lost. Continue?', shiftSup: 'Shift supervisor phone',
-    lineSup: 'Line supervisor phone', empty: 'Nothing found', required: 'ID and at least one name are required',
-    yes: 'Yes', idExists: 'This ID already exists', names: 'Name in 3 languages', rulesLbl: 'Rules',
-    logout: 'Exit Admin', saved: 'Saved', adminMode: 'ADMIN MODE', dateFmt: 'Date (YYYY-MM-DD)',
-    jobAll: 'Job in 3 languages', tapHint: 'Tap a name for details',
+    reset: 'Reset worker list to original', resetQ: 'All worker edits will be lost. Continue?',
+    shiftSup: 'Shift supervisor phone', lineSup: 'Line supervisor phone', empty: 'Nothing found',
+    required: 'ID and at least one name are required', yes: 'Yes', idExists: 'This ID already exists',
+    names: 'Name in 3 languages', rulesLbl: 'Rules', logout: 'Exit Admin', saved: 'Saved',
+    adminMode: 'ADMIN MODE', jobAll: 'Job in 3 languages', tapHint: 'Tap the buttons to mark attendance',
+    today: 'Today', attTitle: 'Attendance', marked: 'marked', allPresent: 'Rest all present',
+    allPresentQ: 'Mark everyone not yet marked as "Present"?', share: 'Send report', clearDay: 'Clear',
+    clearDayQ: 'Remove all marks for this shift on this day?', locked: 'Only admin can mark attendance',
+    lockAtt: 'Only admin can mark attendance', clearAll: 'Delete all attendance history',
+    clearAllQ: 'Attendance history for every day will be lost. Continue?', note: 'Note',
+    notePh: 'e.g. sick, hospital visit...', month: 'This month', week: 'Last 7 days',
+    status: "Today's status", nothing: 'Nobody left to mark', reportBy: 'Worker List App',
+    st: { present: 'Present', absent: 'Absent', leave: 'Leave', off: 'Day off', late: 'Late', none: 'Not marked' },
+    sec: { present: 'Present', absent: 'Absent', leave: 'On leave', off: 'Day off', late: 'Late', none: 'Not marked yet' },
+    short: { present: 'In', absent: 'Absent', leave: 'Leave', off: 'Off', late: 'Late' },
+    wd: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
   },
 };
 
@@ -250,13 +303,15 @@ const RULES = {
   en: 'Personal leave: notify 3 days in advance\nLeave forms must be approved by your supervisor\nChanging your own work hours is not allowed',
 };
 
+const initialWorkers = () => [...S1.map(mk(1, '06:00-15:00')), ...S2.map(mk(2, '16:00-01:00'))];
 const initialData = () => ({
-  workers: [...S1.map(mk(1, '06:00-15:00')), ...S2.map(mk(2, '16:00-01:00'))],
-  date: '2026-11-04',
+  workers: initialWorkers(),
   shiftPhone: '096-2197449',
   linePhone: '092-0011437',
   rules: { ...RULES },
   pin: '1234',
+  att: {},        // { 'YYYY-MM-DD': { [id]: { s: status, n: note } } }
+  lockAtt: false, // admin-only attendance marking
 });
 
 /* ===================== HELPERS ===================== */
@@ -267,24 +322,25 @@ const MON = {
   en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
 };
 const toMM = (s) => String(s).replace(/\d/g, (d) => MMD[d]);
+const pad = (n) => (n < 10 ? '0' + n : '' + n);
+const ymd = (dt) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+const parse = (iso) => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); };
+const addDays = (iso, n) => { const d = parse(iso); d.setDate(d.getDate() + n); return ymd(d); };
 const fmtDate = (iso, l) => {
-  const p = (iso || '').split('-').map(Number);
-  if (p.length !== 3 || !p[0]) return iso;
-  const [y, m, d] = p;
-  if (l === 'mm') return `${toMM(d)} ${MON.mm[m - 1]} ${toMM(y)}`;
-  if (l === 'th') return `${d} ${MON.th[m - 1]} ${y + 543}`;
-  return `${d} ${MON.en[m - 1]} ${y}`;
+  const d = parse(iso);
+  const y = d.getFullYear(), m = d.getMonth(), dd = d.getDate();
+  if (l === 'mm') return `${toMM(dd)} ${MON.mm[m]} ${toMM(y)}`;
+  if (l === 'th') return `${dd} ${MON.th[m]} ${y + 543}`;
+  return `${dd} ${MON.en[m]} ${y}`;
 };
 const nameOf = (w, l) => w[l] || w.en || w.th || w.mm || '-';
 const subName = (w, l) => (l === 'th' ? w.en : w.th);
 const noteColor = (n) => (n === 'new' ? C.green : n === 'leave' ? C.pink : C.cyan);
+const anim = () => LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
 
 /* ===================== SMALL COMPONENTS ===================== */
 const Chip = ({ label, active, onPress, color = C.amber, icon }) => (
-  <TouchableOpacity
-    onPress={onPress}
-    style={[st.chip, active && { backgroundColor: color, borderColor: color }]}
-  >
+  <TouchableOpacity onPress={onPress} style={[st.chip, active && { backgroundColor: color, borderColor: color }]}>
     {icon ? <Ionicons name={icon} size={13} color={active ? '#0A0A12' : C.muted} style={{ marginRight: 4 }} /> : null}
     <Text style={[st.chipTx, active && { color: '#0A0A12', fontWeight: '800' }]}>{label}</Text>
   </TouchableOpacity>
@@ -308,21 +364,24 @@ export default function App() {
   const [lang, setLang] = useState('mm');
   const [data, setData] = useState(null);
   const [shift, setShift] = useState(1);
+  const [attDate, setAttDate] = useState(ymd(new Date()));
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('all');
-  const [group, setGroup] = useState(false);
-  const [detail, setDetail] = useState(null);
+  const [view, setView] = useState('status'); // status | job | list
+  const [detailId, setDetailId] = useState(null);
+  const [noteDraft, setNoteDraft] = useState('');
   const [admin, setAdmin] = useState(false);
   const [pinOpen, setPinOpen] = useState(false);
   const [pinIn, setPinIn] = useState('');
   const [form, setForm] = useState(null);
   const [setOpen, setSetOpen] = useState(false);
-  const [setForm2, setSetForm2] = useState(null);
+  const [sForm, setSForm] = useState(null);
   const [noticeOpen, setNoticeOpen] = useState(false);
 
   const t = T[lang];
   const accent = shift === 1 ? C.amber : C.violet;
   const num = (n) => (lang === 'mm' ? toMM(n) : String(n));
+  const todayIso = ymd(new Date());
 
   useEffect(() => {
     (async () => {
@@ -330,7 +389,10 @@ export default function App() {
         const raw = await AsyncStorage.getItem(KEY);
         const l = await AsyncStorage.getItem(KEY + '_lang');
         if (l) setLang(l);
-        setData(raw ? JSON.parse(raw) : initialData());
+        if (raw) {
+          const p = JSON.parse(raw);
+          setData({ ...initialData(), ...p, att: p.att || {}, lockAtt: !!p.lockAtt });
+        } else setData(initialData());
       } catch (e) {
         setData(initialData());
       }
@@ -346,12 +408,27 @@ export default function App() {
     AsyncStorage.setItem(KEY + '_lang', l).catch(() => {});
   };
 
+  const day = (data && data.att[attDate]) || {};
+  const stOf = (id) => (day[id] ? day[id].s : 'none');
+
   const shiftWorkers = useMemo(() => (data ? data.workers.filter((w) => w.shift === shift) : []), [data, shift]);
+
+  const counts = useMemo(() => {
+    const c = { present: 0, absent: 0, leave: 0, off: 0, late: 0, none: 0 };
+    shiftWorkers.forEach((w) => { c[day[w.id] ? day[w.id].s : 'none']++; });
+    return c;
+  }, [shiftWorkers, day]);
+
+  const markedOf = (s) => {
+    if (!data) return 0;
+    return data.workers.filter((w) => w.shift === s && day[w.id]).length;
+  };
 
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
     return shiftWorkers
       .filter((w) => {
+        if (filter.startsWith('st_')) return (day[w.id] ? day[w.id].s : 'none') === filter.slice(3);
         if (filter === 'R') return w.bus === 'R';
         if (filter === 'P') return w.bus === 'P';
         if (filter === 'moved') return w.note === 'from1' || w.note === 'from2';
@@ -360,32 +437,111 @@ export default function App() {
         return true;
       })
       .filter((w) => !s || [w.id, w.th, w.mm, w.en].some((x) => (x || '').toLowerCase().includes(s)));
-  }, [shiftWorkers, q, filter]);
+  }, [shiftWorkers, q, filter, day]);
 
   const sections = useMemo(() => {
-    if (!group) return [{ key: 'all', title: null, data: list }];
-    const map = {};
-    const order = [];
-    list.forEach((w) => {
-      if (!map[w.job]) { map[w.job] = []; order.push(w.job); }
-      map[w.job].push(w);
-    });
-    return order.map((k) => ({ key: k, title: jobName(k, lang), data: map[k] }));
-  }, [list, group, lang]);
+    if (view === 'list') return [{ key: 'all', title: null, data: list }];
+    if (view === 'job') {
+      const map = {}; const order = [];
+      list.forEach((w) => { if (!map[w.job]) { map[w.job] = []; order.push(w.job); } map[w.job].push(w); });
+      return order.map((k) => ({ key: k, title: jobName(k, lang), data: map[k] }));
+    }
+    // status view: marked people grouped at the top
+    const map = {}; ORDER.forEach((s) => { map[s] = []; });
+    list.forEach((w) => map[day[w.id] ? day[w.id].s : 'none'].push(w));
+    return ORDER.filter((s) => map[s].length).map((s) => ({ key: s, status: s, title: t.sec[s], data: map[s] }));
+  }, [list, view, lang, day, t]);
 
-  const count = (fn) => shiftWorkers.filter(fn).length;
   const c1 = data ? data.workers.filter((w) => w.shift === 1).length : 0;
   const c2 = data ? data.workers.filter((w) => w.shift === 2).length : 0;
 
+  /* ---------- attendance actions ---------- */
+  const canMark = () => {
+    if (data.lockAtt && !admin) { Alert.alert('🔒', t.locked); return false; }
+    return true;
+  };
+
+  const writeDay = (nd) => save({ ...data, att: { ...data.att, [attDate]: nd } });
+
+  const mark = (id, s) => {
+    if (!canMark()) return;
+    anim();
+    const nd = { ...day };
+    if (nd[id] && nd[id].s === s) delete nd[id];
+    else nd[id] = { s, n: nd[id] ? nd[id].n || '' : '' };
+    writeDay(nd);
+  };
+
+  const saveNote = (id, n) => {
+    if (!day[id]) return;
+    if (!canMark()) return;
+    writeDay({ ...day, [id]: { ...day[id], n: n.trim() } });
+  };
+
+  const markAllPresent = () => {
+    if (!canMark()) return;
+    const rest = shiftWorkers.filter((w) => !day[w.id]);
+    if (!rest.length) return Alert.alert(t.nothing);
+    Alert.alert(t.allPresent, `${t.allPresentQ}\n(${num(rest.length)} ${t.ppl})`, [
+      { text: t.cancel, style: 'cancel' },
+      {
+        text: t.yes, onPress: () => {
+          anim();
+          const nd = { ...day };
+          rest.forEach((w) => { nd[w.id] = { s: w.note === 'leave' ? 'leave' : 'present', n: '' }; });
+          writeDay(nd);
+        },
+      },
+    ]);
+  };
+
+  const clearDay = () => {
+    if (!canMark()) return;
+    Alert.alert(t.clearDay, t.clearDayQ, [
+      { text: t.cancel, style: 'cancel' },
+      {
+        text: t.yes, style: 'destructive', onPress: () => {
+          anim();
+          const nd = { ...day };
+          shiftWorkers.forEach((w) => { delete nd[w.id]; });
+          writeDay(nd);
+        },
+      },
+    ]);
+  };
+
+  const shareReport = () => {
+    const sName = shift === 1 ? t.s1 : t.s2;
+    let txt = `📋 ${t.title} – ${sName}\n📅 ${t.wd[parse(attDate).getDay()]}, ${fmtDate(attDate, lang)}\n\n`;
+    const emo = { present: '✅', absent: '❌', leave: '📝', off: '🛌', late: '⏰', none: '⚪' };
+    txt += `👥 ${t.total}: ${num(shiftWorkers.length)} ${t.ppl}\n`;
+    ORDER.forEach((s) => { if (counts[s]) txt += `${emo[s]} ${t.st[s]}: ${num(counts[s])}\n`; });
+    ['absent', 'leave', 'off', 'late', 'none'].forEach((s) => {
+      const ws = shiftWorkers.filter((w) => stOf(w.id) === s);
+      if (!ws.length) return;
+      txt += `\n${emo[s]} ${t.sec[s]} (${num(ws.length)})\n`;
+      ws.forEach((w, i) => {
+        const n = day[w.id] && day[w.id].n ? ` – ${day[w.id].n}` : '';
+        txt += `${num(i + 1)}. ${nameOf(w, lang)} (${w.id}) • ${jobName(w.job, lang)}${n}\n`;
+      });
+    });
+    txt += `\n— ${t.reportBy}`;
+    Share.share({ message: txt }).catch(() => {});
+  };
+
   /* ---------- admin actions ---------- */
   const tryLogin = () => {
-    if (pinIn === data.pin) {
-      setAdmin(true); setPinOpen(false); setPinIn('');
-    } else Alert.alert(t.pinWrong);
+    if (pinIn === data.pin) { setAdmin(true); setPinOpen(false); setPinIn(''); }
+    else Alert.alert(t.pinWrong);
+  };
+
+  const openDetail = (w) => {
+    setNoteDraft(day[w.id] ? day[w.id].n || '' : '');
+    setDetailId(w.id);
   };
 
   const openEdit = (w) => {
-    setDetail(null);
+    setDetailId(null);
     setForm(w ? { ...w, _orig: w.id } : {
       id: '', th: '', mm: '', en: '', job: 'drive',
       time: shift === 1 ? '06:00-15:00' : '16:00-01:00', bus: '', note: 'new', shift, _orig: null,
@@ -398,9 +554,7 @@ export default function App() {
     const clash = data.workers.find((w) => w.id === f.id.trim() && w.id !== f._orig);
     if (clash) return Alert.alert(t.idExists);
     const clean = { id: f.id.trim(), th: f.th.trim(), mm: f.mm.trim(), en: f.en.trim(), job: f.job, time: f.time.trim(), bus: f.bus, note: f.note, shift: f.shift };
-    const workers = f._orig
-      ? data.workers.map((w) => (w.id === f._orig ? clean : w))
-      : [...data.workers, clean];
+    const workers = f._orig ? data.workers.map((w) => (w.id === f._orig ? clean : w)) : [...data.workers, clean];
     save({ ...data, workers });
     setForm(null);
   };
@@ -408,31 +562,36 @@ export default function App() {
   const delWorker = (w) => {
     Alert.alert(t.del, `${nameOf(w, lang)}\n${t.delQ}`, [
       { text: t.cancel, style: 'cancel' },
-      { text: t.del, style: 'destructive', onPress: () => { save({ ...data, workers: data.workers.filter((x) => x.id !== w.id) }); setDetail(null); } },
+      { text: t.del, style: 'destructive', onPress: () => { setDetailId(null); save({ ...data, workers: data.workers.filter((x) => x.id !== w.id) }); } },
     ]);
   };
 
   const moveWorker = (w) => {
-    const to = w.shift === 1 ? 2 : 1;
-    const nw = { ...w, shift: to, note: w.shift === 1 ? 'from1' : 'from2' };
+    const nw = { ...w, shift: w.shift === 1 ? 2 : 1, note: w.shift === 1 ? 'from1' : 'from2' };
     save({ ...data, workers: data.workers.map((x) => (x.id === w.id ? nw : x)) });
-    setDetail(null);
+    setDetailId(null);
   };
 
   const openSettings = () => {
-    setSetForm2({ date: data.date, shiftPhone: data.shiftPhone, linePhone: data.linePhone, rules: { ...data.rules }, pin: '' });
+    setSForm({ shiftPhone: data.shiftPhone, linePhone: data.linePhone, rules: { ...data.rules }, pin: '', lockAtt: data.lockAtt });
     setSetOpen(true);
   };
   const saveSettings = () => {
-    const s = setForm2;
-    save({ ...data, date: s.date.trim(), shiftPhone: s.shiftPhone.trim(), linePhone: s.linePhone.trim(), rules: s.rules, pin: s.pin.trim() ? s.pin.trim() : data.pin });
+    const s = sForm;
+    save({ ...data, shiftPhone: s.shiftPhone.trim(), linePhone: s.linePhone.trim(), rules: s.rules, lockAtt: s.lockAtt, pin: s.pin.trim() ? s.pin.trim() : data.pin });
     setSetOpen(false);
     Alert.alert(t.saved);
   };
-  const resetAll = () => {
+  const resetWorkers = () => {
     Alert.alert(t.reset, t.resetQ, [
       { text: t.cancel, style: 'cancel' },
-      { text: t.yes, style: 'destructive', onPress: () => { save({ ...initialData(), pin: data.pin }); setSetOpen(false); } },
+      { text: t.yes, style: 'destructive', onPress: () => { save({ ...data, workers: initialWorkers() }); setSetOpen(false); } },
+    ]);
+  };
+  const clearAllAtt = () => {
+    Alert.alert(t.clearAll, t.clearAllQ, [
+      { text: t.cancel, style: 'cancel' },
+      { text: t.yes, style: 'destructive', onPress: () => { save({ ...data, att: {} }); setSetOpen(false); } },
     ]);
   };
 
@@ -446,45 +605,69 @@ export default function App() {
     );
   }
 
-  const noteLabel = (n) => (n ? t[n] : '');
+  const noteLabel = (n) => (n === 'leave' ? t.leaveM : t[n] || '');
   const busLabel = (b) => (b === 'R' ? t.busR : b === 'P' ? t.busP : t.noBus);
+  const detail = detailId ? data.workers.find((w) => w.id === detailId) : null;
+  const shiftMarked = counts.present + counts.absent + counts.leave + counts.off + counts.late;
+  const pct = shiftWorkers.length ? shiftMarked / shiftWorkers.length : 0;
 
   /* ---------- row ---------- */
-  const renderItem = ({ item: w, index }) => (
-    <TouchableOpacity activeOpacity={0.8} onPress={() => setDetail(w)} style={st.row}>
-      <View style={[st.rowBar, { backgroundColor: w.job === 'lead' ? C.pink : accent }]} />
-      <View style={[st.avatar, { borderColor: accent }]}>
-        <Text style={[st.avatarTx, { color: accent }]}>{num(index + 1)}</Text>
-      </View>
-      <View style={{ flex: 1 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-          <Text style={st.name} numberOfLines={1}>{nameOf(w, lang)}</Text>
-          {w.job === 'lead' && <Ionicons name="star" size={13} color={C.pink} style={{ marginLeft: 6 }} />}
+  const renderItem = ({ item: w, index }) => {
+    const s = stOf(w.id);
+    const S = STATUS[s];
+    const rec = day[w.id];
+    const barColor = s !== 'none' ? S.color : w.job === 'lead' ? C.pink : accent;
+    return (
+      <View style={[st.row, s !== 'none' && { borderColor: S.color + '55', backgroundColor: S.color + '0D' }]}>
+        <View style={[st.rowBar, { backgroundColor: barColor }]} />
+        <TouchableOpacity activeOpacity={0.8} onPress={() => openDetail(w)} style={st.rowTop}>
+          <View style={[st.avatar, { borderColor: barColor }]}>
+            {s !== 'none'
+              ? <Ionicons name={S.icon} size={20} color={S.color} />
+              : <Text style={[st.avatarTx, { color: accent }]}>{num(index + 1)}</Text>}
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={st.name} numberOfLines={1}>{nameOf(w, lang)}</Text>
+              {w.job === 'lead' && <Ionicons name="star" size={13} color={C.pink} style={{ marginLeft: 6 }} />}
+            </View>
+            <Text style={st.subName} numberOfLines={1}>{subName(w, lang)} • {w.id}</Text>
+            <View style={st.rowTags}>
+              <Tag text={jobName(w.job, lang)} color={accent} />
+              {w.bus ? <Tag text={busLabel(w.bus)} color={w.bus === 'R' ? C.green : C.cyan} /> : null}
+              {w.note ? <Tag text={noteLabel(w.note)} color={noteColor(w.note)} /> : null}
+            </View>
+            {rec && rec.n ? (
+              <Text style={[st.rowNote, { color: S.color }]} numberOfLines={1}>📝 {rec.n}</Text>
+            ) : null}
+          </View>
+          <View style={st.timeBox}>
+            <Ionicons name="time-outline" size={13} color={C.muted} />
+            <Text style={st.timeTx}>{w.time ? w.time.split('-')[0] : '—'}</Text>
+            <Text style={st.timeTx2}>{w.time ? w.time.split('-')[1] : ''}</Text>
+          </View>
+        </TouchableOpacity>
+        <View style={st.seg}>
+          {SEG.map((k) => {
+            const on = s === k;
+            const K = STATUS[k];
+            return (
+              <TouchableOpacity key={k} activeOpacity={0.7} onPress={() => mark(w.id, k)}
+                style={[st.segBtn, { borderColor: K.color + '44' }, on && { backgroundColor: K.color, borderColor: K.color }]}>
+                <Ionicons name={K.icon} size={13} color={on ? '#0A0A12' : K.color} />
+                <Text style={[st.segTx, { color: on ? '#0A0A12' : C.muted }, on && { fontWeight: '900' }]} numberOfLines={1}>{t.short[k]}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
-        <Text style={st.subName} numberOfLines={1}>{subName(w, lang)} • {w.id}</Text>
-        <View style={st.rowTags}>
-          <Tag text={jobName(w.job, lang)} color={accent} />
-          {w.bus ? <Tag text={busLabel(w.bus)} color={w.bus === 'R' ? C.green : C.cyan} /> : null}
-          {w.note ? <Tag text={noteLabel(w.note)} color={noteColor(w.note)} /> : null}
-        </View>
       </View>
-      <View style={st.timeBox}>
-        <Ionicons name="time-outline" size={13} color={C.muted} />
-        <Text style={st.timeTx}>{w.time ? w.time.split('-')[0] : '—'}</Text>
-        <Text style={st.timeTx2}>{w.time ? w.time.split('-')[1] : ''}</Text>
-        {admin && (
-          <TouchableOpacity onPress={() => openEdit(w)} style={st.miniEdit}>
-            <Ionicons name="create-outline" size={16} color={C.amber} />
-          </TouchableOpacity>
-        )}
-      </View>
-    </TouchableOpacity>
-  );
+    );
+  };
 
   /* ---------- header ---------- */
+  const isToday = attDate === todayIso;
   const Header = (
     <View>
-      {/* top bar */}
       <View style={st.top}>
         <View style={{ flex: 1 }}>
           <Text style={st.title}>{t.title}</Text>
@@ -495,17 +678,13 @@ export default function App() {
         </TouchableOpacity>
       </View>
 
-      {/* language switch */}
       <View style={st.langRow}>
         {[['mm', 'မြန်မာ'], ['th', 'ไทย'], ['en', 'EN']].map(([k, l]) => (
           <TouchableOpacity key={k} onPress={() => changeLang(k)} style={[st.langBtn, lang === k && st.langOn]}>
             <Text style={[st.langTx, lang === k && { color: '#0A0A12' }]}>{l}</Text>
           </TouchableOpacity>
         ))}
-        <View style={st.dateChip}>
-          <Ionicons name="calendar-outline" size={14} color={C.text} />
-          <Text style={st.dateTx}>{fmtDate(data.date, lang)}</Text>
-        </View>
+        {data.lockAtt ? <Ionicons name="lock-closed" size={16} color={C.amber} style={{ marginLeft: 'auto' }} /> : null}
       </View>
 
       {admin && (
@@ -515,43 +694,95 @@ export default function App() {
         </View>
       )}
 
+      {/* date navigator */}
+      <View style={st.dateBar}>
+        <TouchableOpacity onPress={() => setAttDate(addDays(attDate, -1))} style={st.dateArrow}>
+          <Ionicons name="chevron-back" size={22} color={C.text} />
+        </TouchableOpacity>
+        <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={() => setAttDate(todayIso)}>
+          <Text style={st.dateWd}>{t.wd[parse(attDate).getDay()]}{isToday ? ` • ${t.today}` : ''}</Text>
+          <Text style={st.dateBig}>{fmtDate(attDate, lang)}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setAttDate(addDays(attDate, 1))} style={st.dateArrow}>
+          <Ionicons name="chevron-forward" size={22} color={C.text} />
+        </TouchableOpacity>
+      </View>
+      {!isToday && (
+        <TouchableOpacity onPress={() => setAttDate(todayIso)} style={st.todayBtn}>
+          <Ionicons name="today" size={14} color="#0A0A12" />
+          <Text style={st.todayTx}>{t.today}</Text>
+        </TouchableOpacity>
+      )}
+
       {/* shift cards */}
       <View style={st.shiftRow}>
         {[1, 2].map((s) => {
           const on = shift === s;
           const col = s === 1 ? C.amber : C.violet;
+          const tot = s === 1 ? c1 : c2;
+          const mk2 = markedOf(s);
           return (
-            <TouchableOpacity key={s} activeOpacity={0.85} onPress={() => { setShift(s); setFilter('all'); }}
+            <TouchableOpacity key={s} activeOpacity={0.85} onPress={() => { anim(); setShift(s); setFilter('all'); }}
               style={[st.shiftCard, on && { backgroundColor: col, borderColor: col }]}>
               <View style={st.shiftHead}>
                 <Ionicons name={s === 1 ? 'sunny' : 'moon'} size={22} color={on ? '#0A0A12' : col} />
-                <Text style={[st.shiftBig, { color: on ? '#0A0A12' : C.text }]}>{num(s === 1 ? c1 : c2)}</Text>
+                <Text style={[st.shiftBig, { color: on ? '#0A0A12' : C.text }]}>{num(tot)}</Text>
               </View>
               <Text style={[st.shiftName, { color: on ? '#0A0A12' : C.text }]}>{s === 1 ? t.s1 : t.s2}</Text>
-              <Text style={[st.shiftSub, { color: on ? '#0A0A12AA' : C.muted }]}>{s === 1 ? t.day : t.night} • {s === 1 ? 'กะ 1' : 'กะ 2'}</Text>
+              <Text style={[st.shiftSub, { color: on ? '#0A0A12AA' : C.muted }]}>{s === 1 ? t.day : t.night}</Text>
+              <View style={[st.miniTrack, { backgroundColor: on ? '#0A0A1233' : C.line }]}>
+                <View style={[st.miniFill, { width: `${tot ? (mk2 / tot) * 100 : 0}%`, backgroundColor: on ? '#0A0A12' : col }]} />
+              </View>
+              <Text style={[st.shiftSub, { color: on ? '#0A0A12AA' : C.muted }]}>{num(mk2)}/{num(tot)} {t.marked}</Text>
             </TouchableOpacity>
           );
         })}
       </View>
 
-      {/* stats */}
-      <View style={st.stats}>
-        {[
-          ['people', count(() => true), t.total, accent],
-          ['bus', count((w) => w.bus === 'R'), t.busR, C.green],
-          ['boat', count((w) => w.bus === 'P'), t.busP, C.cyan],
-          ['swap-horizontal', count((w) => w.note === 'from1' || w.note === 'from2'), t.moved, C.pink],
-        ].map(([ic, n, l, col]) => (
-          <View key={l} style={st.stat}>
-            <Ionicons name={ic} size={16} color={col} />
-            <Text style={[st.statN, { color: col }]}>{num(n)}</Text>
-            <Text style={st.statL} numberOfLines={2}>{l}</Text>
-          </View>
-        ))}
+      {/* attendance dashboard */}
+      <View style={st.attCard}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+          <Ionicons name="pulse" size={18} color={accent} />
+          <Text style={st.attTitle}>{t.attTitle}</Text>
+          <Text style={[st.attPct, { color: accent }]}>{num(Math.round(pct * 100))}%</Text>
+        </View>
+        <View style={st.track}>
+          {['present', 'late', 'leave', 'off', 'absent'].map((s) =>
+            counts[s] ? <View key={s} style={{ flex: counts[s], backgroundColor: STATUS[s].color }} /> : null)}
+          {counts.none ? <View style={{ flex: counts.none, backgroundColor: C.line }} /> : null}
+        </View>
+        <View style={st.tiles}>
+          {['present', 'absent', 'leave', 'off', 'late', 'none'].map((s) => {
+            const on = filter === 'st_' + s;
+            const col = STATUS[s].color;
+            return (
+              <TouchableOpacity key={s} activeOpacity={0.8} onPress={() => { anim(); setFilter(on ? 'all' : 'st_' + s); }}
+                style={[st.tile, { borderColor: col + '55' }, on && { backgroundColor: col, borderColor: col }]}>
+                <Ionicons name={STATUS[s].icon} size={16} color={on ? '#0A0A12' : col} />
+                <Text style={[st.tileN, { color: on ? '#0A0A12' : col }]}>{num(counts[s])}</Text>
+                <Text style={[st.tileL, on && { color: '#0A0A12' }]} numberOfLines={1}>{t.st[s]}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <View style={st.actRow}>
+          <TouchableOpacity onPress={markAllPresent} style={[st.actBtn, { backgroundColor: C.green, flex: 1.6 }]}>
+            <Ionicons name="checkmark-done" size={16} color="#0A0A12" />
+            <Text style={st.actTx} numberOfLines={1}>{t.allPresent}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={shareReport} style={[st.actBtn, { backgroundColor: C.cyan }]}>
+            <Ionicons name="share-social" size={16} color="#0A0A12" />
+            <Text style={st.actTx} numberOfLines={1}>{t.share}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={clearDay} style={[st.actBtn, { backgroundColor: C.card2, borderWidth: 1, borderColor: C.red + '88' }]}>
+            <Ionicons name="refresh" size={16} color={C.red} />
+            <Text style={[st.actTx, { color: C.red }]} numberOfLines={1}>{t.clearDay}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* notice */}
-      <TouchableOpacity onPress={() => setNoticeOpen(!noticeOpen)} style={st.notice}>
+      <TouchableOpacity onPress={() => { anim(); setNoticeOpen(!noticeOpen); }} style={st.notice}>
         <Ionicons name="megaphone-outline" size={18} color={C.amber} />
         <Text style={st.noticeT}>{t.notice}</Text>
         <Ionicons name={noticeOpen ? 'chevron-up' : 'chevron-down'} size={18} color={C.muted} />
@@ -587,14 +818,16 @@ export default function App() {
       <View style={st.searchBox}>
         <Ionicons name="search" size={18} color={C.muted} />
         <TextInput value={q} onChangeText={setQ} placeholder={t.search} placeholderTextColor={C.muted} style={st.searchIn} />
-        {q ? (
-          <TouchableOpacity onPress={() => setQ('')}><Ionicons name="close-circle" size={18} color={C.muted} /></TouchableOpacity>
-        ) : null}
+        {q ? <TouchableOpacity onPress={() => setQ('')}><Ionicons name="close-circle" size={18} color={C.muted} /></TouchableOpacity> : null}
       </View>
 
-      {/* filters */}
+      {/* view + filters */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }} contentContainerStyle={{ paddingHorizontal: 16 }}>
+        <Chip label={t.vStatus} icon="pulse" active={view === 'status'} color={C.pink} onPress={() => { anim(); setView('status'); }} />
+        <Chip label={t.vJob} icon="layers" active={view === 'job'} color={C.pink} onPress={() => { anim(); setView('job'); }} />
+        <Chip label={t.vList} icon="list" active={view === 'list'} color={C.pink} onPress={() => { anim(); setView('list'); }} />
+      </ScrollView>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6 }} contentContainerStyle={{ paddingHorizontal: 16 }}>
-        <Chip label={group ? t.groupJob : t.list} icon={group ? 'layers' : 'list'} active color={C.pink} onPress={() => setGroup(!group)} />
         <Chip label={t.all} active={filter === 'all'} color={accent} onPress={() => setFilter('all')} />
         <Chip label={t.lead} icon="star" active={filter === 'lead'} color={accent} onPress={() => setFilter('lead')} />
         <Chip label={t.busR} icon="bus" active={filter === 'R'} color={accent} onPress={() => setFilter('R')} />
@@ -606,6 +839,22 @@ export default function App() {
     </View>
   );
 
+  /* ---------- detail stats ---------- */
+  let monthStats = null; let week = [];
+  if (detail) {
+    monthStats = { present: 0, absent: 0, leave: 0, off: 0, late: 0 };
+    const pre = attDate.slice(0, 7);
+    Object.keys(data.att).forEach((d) => {
+      if (d.startsWith(pre) && data.att[d][detail.id]) monthStats[data.att[d][detail.id].s]++;
+    });
+    for (let i = 6; i >= 0; i--) {
+      const d = addDays(attDate, -i);
+      const r = data.att[d] && data.att[d][detail.id];
+      week.push({ d, s: r ? r.s : 'none' });
+    }
+  }
+  const dStatus = detail ? stOf(detail.id) : 'none';
+
   /* ===================== RENDER ===================== */
   return (
     <SafeAreaView style={st.root}>
@@ -616,15 +865,21 @@ export default function App() {
         renderItem={renderItem}
         ListHeaderComponent={Header}
         stickySectionHeadersEnabled={false}
-        renderSectionHeader={({ section }) =>
-          section.title ? (
-            <View style={st.secHead}>
-              <View style={[st.secDot, { backgroundColor: accent }]} />
-              <Text style={st.secTx}>{section.title}</Text>
-              <Text style={[st.secN, { color: accent }]}>{num(section.data.length)}</Text>
+        renderSectionHeader={({ section }) => {
+          if (!section.title) return null;
+          const col = section.status ? STATUS[section.status].color : accent;
+          return (
+            <View style={[st.secHead, section.status && { backgroundColor: col + '1A', borderColor: col + '55' }]}>
+              {section.status
+                ? <Ionicons name={STATUS[section.status].icon} size={18} color={col} style={{ marginRight: 8 }} />
+                : <View style={[st.secDot, { backgroundColor: col }]} />}
+              <Text style={[st.secTx, section.status && { color: col }]}>{section.title}</Text>
+              <View style={[st.secBadge, { backgroundColor: col }]}>
+                <Text style={st.secN}>{num(section.data.length)}</Text>
+              </View>
             </View>
-          ) : null
-        }
+          );
+        }}
         ListEmptyComponent={
           <View style={{ alignItems: 'center', padding: 40 }}>
             <Ionicons name="search-outline" size={40} color={C.muted} />
@@ -642,17 +897,64 @@ export default function App() {
       )}
 
       {/* ---------- DETAIL ---------- */}
-      <Modal visible={!!detail} transparent animationType="slide" onRequestClose={() => setDetail(null)}>
-        <View style={st.overlay}>
+      <Modal visible={!!detail} transparent animationType="slide" onRequestClose={() => setDetailId(null)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={st.overlay}>
           {detail && (
             <View style={st.sheet}>
               <View style={st.grab} />
-              <View style={[st.bigAvatar, { borderColor: detail.shift === 1 ? C.amber : C.violet }]}>
-                <Ionicons name={detail.job === 'lead' ? 'star' : 'person'} size={34} color={detail.shift === 1 ? C.amber : C.violet} />
-              </View>
-              <Text style={st.dName}>{nameOf(detail, lang)}</Text>
-              <Text style={st.dId}>ID {detail.id}</Text>
-              <ScrollView style={{ maxHeight: 380 }}>
+              <ScrollView style={{ maxHeight: 560 }} keyboardShouldPersistTaps="handled">
+                <View style={[st.bigAvatar, { borderColor: dStatus !== 'none' ? STATUS[dStatus].color : detail.shift === 1 ? C.amber : C.violet }]}>
+                  <Ionicons name={dStatus !== 'none' ? STATUS[dStatus].icon : detail.job === 'lead' ? 'star' : 'person'} size={34}
+                    color={dStatus !== 'none' ? STATUS[dStatus].color : detail.shift === 1 ? C.amber : C.violet} />
+                </View>
+                <Text style={st.dName}>{nameOf(detail, lang)}</Text>
+                <Text style={st.dId}>ID {detail.id} • {fmtDate(attDate, lang)}</Text>
+
+                <Text style={st.dSec}>{t.status}</Text>
+                <View style={st.bigSeg}>
+                  {SEG.map((k) => {
+                    const on = dStatus === k; const K = STATUS[k];
+                    return (
+                      <TouchableOpacity key={k} onPress={() => mark(detail.id, k)}
+                        style={[st.bigSegBtn, { borderColor: K.color + '66' }, on && { backgroundColor: K.color, borderColor: K.color }]}>
+                        <Ionicons name={K.icon} size={20} color={on ? '#0A0A12' : K.color} />
+                        <Text style={[st.bigSegTx, { color: on ? '#0A0A12' : C.text }]} numberOfLines={1}>{t.st[k]}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                {dStatus !== 'none' && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                    <TextInput value={noteDraft} onChangeText={setNoteDraft} placeholder={t.notePh} placeholderTextColor={C.muted}
+                      style={[st.input, { flex: 1, paddingVertical: 8 }]} onEndEditing={() => saveNote(detail.id, noteDraft)} />
+                    <TouchableOpacity onPress={() => saveNote(detail.id, noteDraft)} style={[st.noteSave, { backgroundColor: STATUS[dStatus].color }]}>
+                      <Ionicons name="checkmark" size={18} color="#0A0A12" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <Text style={st.dSec}>{t.week}</Text>
+                <View style={st.weekRow}>
+                  {week.map((x) => (
+                    <TouchableOpacity key={x.d} onPress={() => { setAttDate(x.d); const r = data.att[x.d] && data.att[x.d][detail.id]; setNoteDraft(r ? r.n || '' : ''); }} style={st.weekCell}>
+                      <View style={[st.weekDot, { backgroundColor: x.s === 'none' ? C.card2 : STATUS[x.s].color, borderColor: x.d === attDate ? C.text : 'transparent' }]}>
+                        {x.s !== 'none' ? <Ionicons name={STATUS[x.s].icon} size={14} color="#0A0A12" /> : null}
+                      </View>
+                      <Text style={st.weekTx}>{num(parse(x.d).getDate())}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={st.dSec}>{t.month}</Text>
+                <View style={st.monthRow}>
+                  {SEG.map((k) => (
+                    <View key={k} style={st.monthCell}>
+                      <Text style={[st.monthN, { color: STATUS[k].color }]}>{num(monthStats[k])}</Text>
+                      <Text style={st.monthL} numberOfLines={1}>{t.short[k]}</Text>
+                    </View>
+                  ))}
+                </View>
+
                 <Text style={st.dSec}>{t.names}</Text>
                 <View style={st.dBox}>
                   <Text style={st.dLine}><Text style={st.dK}>MM  </Text>{detail.mm || '—'}</Text>
@@ -671,26 +973,27 @@ export default function App() {
                   <View style={st.gCell}><Ionicons name="bus" size={16} color={C.green} /><Text style={st.gL}>{t.bus}</Text><Text style={st.gV}>{busLabel(detail.bus)}</Text></View>
                   <View style={st.gCell}><Ionicons name="information-circle" size={16} color={C.pink} /><Text style={st.gL}>{t.noteLbl}</Text><Text style={st.gV}>{detail.note ? noteLabel(detail.note) : t.none}</Text></View>
                 </View>
+
+                {admin && (
+                  <View style={{ flexDirection: 'row', marginTop: 6 }}>
+                    <TouchableOpacity style={[st.aBtn, { backgroundColor: C.amber }]} onPress={() => openEdit(detail)}>
+                      <Ionicons name="create" size={16} color="#0A0A12" /><Text style={st.aTx}>{t.edit}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[st.aBtn, { backgroundColor: C.violet }]} onPress={() => moveWorker(detail)}>
+                      <Ionicons name="swap-horizontal" size={16} color="#0A0A12" /><Text style={st.aTx}>{t.move}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[st.aBtn, { backgroundColor: C.red }]} onPress={() => delWorker(detail)}>
+                      <Ionicons name="trash" size={16} color="#0A0A12" /><Text style={st.aTx}>{t.del}</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </ScrollView>
-              {admin && (
-                <View style={{ flexDirection: 'row', marginTop: 12 }}>
-                  <TouchableOpacity style={[st.aBtn, { backgroundColor: C.amber }]} onPress={() => openEdit(detail)}>
-                    <Ionicons name="create" size={16} color="#0A0A12" /><Text style={st.aTx}>{t.edit}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[st.aBtn, { backgroundColor: C.violet }]} onPress={() => moveWorker(detail)}>
-                    <Ionicons name="swap-horizontal" size={16} color="#0A0A12" /><Text style={st.aTx}>{t.move}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[st.aBtn, { backgroundColor: C.red }]} onPress={() => delWorker(detail)}>
-                    <Ionicons name="trash" size={16} color="#0A0A12" /><Text style={st.aTx}>{t.del}</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-              <TouchableOpacity style={st.closeBtn} onPress={() => setDetail(null)}>
+              <TouchableOpacity style={st.closeBtn} onPress={() => setDetailId(null)}>
                 <Ionicons name="close" size={22} color={C.text} />
               </TouchableOpacity>
             </View>
           )}
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ---------- PIN ---------- */}
@@ -747,7 +1050,7 @@ export default function App() {
                 <Text style={st.fLbl}>{t.noteLbl}</Text>
                 <View style={st.wrap}>
                   {['', 'new', 'leave', 'from1', 'from2'].map((n) => (
-                    <Chip key={n || 'none'} label={n ? t[n] : t.none} active={form.note === n} color={C.pink} onPress={() => setForm({ ...form, note: n })} />
+                    <Chip key={n || 'none'} label={n ? noteLabel(n) : t.none} active={form.note === n} color={C.pink} onPress={() => setForm({ ...form, note: n })} />
                   ))}
                 </View>
 
@@ -770,7 +1073,7 @@ export default function App() {
 
       {/* ---------- SETTINGS ---------- */}
       <Modal visible={setOpen} animationType="slide" onRequestClose={() => setSetOpen(false)}>
-        {setForm2 && (
+        {sForm && (
           <SafeAreaView style={st.root}>
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
               <View style={[st.top, { paddingTop: Platform.OS === 'android' ? 36 : 8 }]}>
@@ -779,20 +1082,28 @@ export default function App() {
                 <TouchableOpacity onPress={saveSettings} style={[st.iconBtn, { backgroundColor: C.amber, borderColor: C.amber }]}><Ionicons name="checkmark" size={20} color="#0A0A12" /></TouchableOpacity>
               </View>
               <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
-                <Field label={t.dateFmt} value={setForm2.date} onChangeText={(v) => setSetForm2({ ...setForm2, date: v })} placeholder="2026-11-04" />
-                <Field label={t.shiftSup} value={setForm2.shiftPhone} onChangeText={(v) => setSetForm2({ ...setForm2, shiftPhone: v })} keyboardType="phone-pad" />
-                <Field label={t.lineSup} value={setForm2.linePhone} onChangeText={(v) => setSetForm2({ ...setForm2, linePhone: v })} keyboardType="phone-pad" />
+                <View style={st.switchRow}>
+                  <Ionicons name="lock-closed" size={18} color={C.amber} />
+                  <Text style={st.switchTx}>{t.lockAtt}</Text>
+                  <Switch value={sForm.lockAtt} onValueChange={(v) => setSForm({ ...sForm, lockAtt: v })}
+                    trackColor={{ false: C.line, true: C.amber }} thumbColor={C.text} />
+                </View>
+                <Field label={t.shiftSup} value={sForm.shiftPhone} onChangeText={(v) => setSForm({ ...sForm, shiftPhone: v })} keyboardType="phone-pad" />
+                <Field label={t.lineSup} value={sForm.linePhone} onChangeText={(v) => setSForm({ ...sForm, linePhone: v })} keyboardType="phone-pad" />
                 {['mm', 'th', 'en'].map((l) => (
-                  <Field key={l} label={`${t.rulesLbl} (${l.toUpperCase()})`} multiline value={setForm2.rules[l]}
-                    onChangeText={(v) => setSetForm2({ ...setForm2, rules: { ...setForm2.rules, [l]: v } })} />
+                  <Field key={l} label={`${t.rulesLbl} (${l.toUpperCase()})`} multiline value={sForm.rules[l]}
+                    onChangeText={(v) => setSForm({ ...sForm, rules: { ...sForm.rules, [l]: v } })} />
                 ))}
-                <Field label={t.newPin} value={setForm2.pin} onChangeText={(v) => setSetForm2({ ...setForm2, pin: v })} keyboardType="number-pad" secureTextEntry maxLength={8} />
+                <Field label={t.newPin} value={sForm.pin} onChangeText={(v) => setSForm({ ...sForm, pin: v })} keyboardType="number-pad" secureTextEntry maxLength={8} />
 
                 <TouchableOpacity onPress={saveSettings} style={[st.bigBtn, { backgroundColor: C.amber }]}>
                   <Ionicons name="save" size={18} color="#0A0A12" /><Text style={st.bigBtnTx}>{t.save}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={resetAll} style={[st.bigBtn, { backgroundColor: C.card2, borderWidth: 1, borderColor: C.red }]}>
-                  <Ionicons name="refresh" size={18} color={C.red} /><Text style={[st.bigBtnTx, { color: C.red }]}>{t.reset}</Text>
+                <TouchableOpacity onPress={resetWorkers} style={[st.bigBtn, { backgroundColor: C.card2, borderWidth: 1, borderColor: C.red }]}>
+                  <Ionicons name="people" size={18} color={C.red} /><Text style={[st.bigBtnTx, { color: C.red }]}>{t.reset}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={clearAllAtt} style={[st.bigBtn, { backgroundColor: C.card2, borderWidth: 1, borderColor: C.red }]}>
+                  <Ionicons name="trash" size={18} color={C.red} /><Text style={[st.bigBtnTx, { color: C.red }]}>{t.clearAll}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => { setAdmin(false); setSetOpen(false); }} style={[st.bigBtn, { backgroundColor: C.card2 }]}>
                   <Ionicons name="log-out-outline" size={18} color={C.text} /><Text style={[st.bigBtnTx, { color: C.text }]}>{t.logout}</Text>
@@ -818,23 +1129,37 @@ const st = StyleSheet.create({
   langBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.line, marginRight: 6 },
   langOn: { backgroundColor: C.text, borderColor: C.text },
   langTx: { color: C.text, fontWeight: '700', fontSize: 13, lineHeight: 20 },
-  dateChip: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', backgroundColor: C.card2, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 20 },
-  dateTx: { color: C.text, fontSize: 12, marginLeft: 5, fontWeight: '600', lineHeight: 20 },
 
   adminBar: { marginHorizontal: 16, marginBottom: 10, backgroundColor: C.amber, borderRadius: 10, paddingVertical: 5, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
   adminBarTx: { color: '#0A0A12', fontWeight: '900', marginLeft: 6, letterSpacing: 2, fontSize: 12, lineHeight: 20 },
 
-  shiftRow: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 12 },
+  dateBar: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 10, backgroundColor: C.card, borderRadius: 20, padding: 6, borderWidth: 1, borderColor: C.line },
+  dateArrow: { width: 44, height: 44, borderRadius: 14, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center' },
+  dateWd: { color: C.muted, fontSize: 12, lineHeight: 20 },
+  dateBig: { color: C.text, fontSize: 17, fontWeight: '900', lineHeight: 28 },
+  todayBtn: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', backgroundColor: C.amber, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 5, marginTop: -4, marginBottom: 10 },
+  todayTx: { color: '#0A0A12', fontWeight: '900', marginLeft: 5, fontSize: 12, lineHeight: 20 },
+
+  shiftRow: { flexDirection: 'row', paddingHorizontal: 12, marginBottom: 12 },
   shiftCard: { flex: 1, backgroundColor: C.card, borderRadius: 22, padding: 14, borderWidth: 1.5, borderColor: C.line, marginHorizontal: 4 },
   shiftHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   shiftBig: { fontSize: 30, fontWeight: '900' },
   shiftName: { fontSize: 18, fontWeight: '900', marginTop: 6, lineHeight: 28 },
   shiftSub: { fontSize: 11, lineHeight: 18 },
+  miniTrack: { height: 5, borderRadius: 3, overflow: 'hidden', marginTop: 8, marginBottom: 2 },
+  miniFill: { height: 5, borderRadius: 3 },
 
-  stats: { flexDirection: 'row', marginHorizontal: 16, backgroundColor: C.card, borderRadius: 18, padding: 10, marginBottom: 10, borderWidth: 1, borderColor: C.line },
-  stat: { flex: 1, alignItems: 'center' },
-  statN: { fontSize: 20, fontWeight: '900', marginTop: 2 },
-  statL: { color: C.muted, fontSize: 10, textAlign: 'center', lineHeight: 16 },
+  attCard: { marginHorizontal: 16, backgroundColor: C.card, borderRadius: 22, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: C.line },
+  attTitle: { color: C.text, fontWeight: '900', fontSize: 16, marginLeft: 8, flex: 1, lineHeight: 26 },
+  attPct: { fontWeight: '900', fontSize: 18 },
+  track: { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', backgroundColor: C.line, marginBottom: 12 },
+  tiles: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  tile: { width: '32%', backgroundColor: C.card2, borderRadius: 16, paddingVertical: 10, alignItems: 'center', marginBottom: 8, borderWidth: 1 },
+  tileN: { fontSize: 22, fontWeight: '900', marginTop: 2 },
+  tileL: { color: C.muted, fontSize: 11, lineHeight: 18, paddingHorizontal: 4 },
+  actRow: { flexDirection: 'row', marginTop: 4 },
+  actBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 14, paddingVertical: 11, marginHorizontal: 3, paddingHorizontal: 6 },
+  actTx: { color: '#0A0A12', fontWeight: '900', fontSize: 12, marginLeft: 5, lineHeight: 20, flexShrink: 1 },
 
   notice: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, backgroundColor: C.card2, borderRadius: 14, padding: 12 },
   noticeT: { color: C.text, fontWeight: '700', flex: 1, marginLeft: 8, lineHeight: 22 },
@@ -849,26 +1174,32 @@ const st = StyleSheet.create({
 
   chip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: C.line, backgroundColor: C.card, marginRight: 6, marginBottom: 6 },
   chipTx: { color: C.text, fontSize: 12, lineHeight: 20 },
-  hint: { color: C.muted, fontSize: 11, marginHorizontal: 16, marginBottom: 8, lineHeight: 18 },
+  hint: { color: C.muted, fontSize: 11, marginHorizontal: 16, marginBottom: 4, lineHeight: 18 },
 
-  secHead: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 14, marginBottom: 6 },
+  secHead: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 14, marginBottom: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, borderWidth: 1, borderColor: 'transparent' },
   secDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
-  secTx: { color: C.text, fontWeight: '800', flex: 1, lineHeight: 24 },
-  secN: { fontWeight: '900' },
+  secTx: { color: C.text, fontWeight: '900', flex: 1, lineHeight: 24, fontSize: 15 },
+  secBadge: { minWidth: 30, paddingHorizontal: 8, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  secN: { fontWeight: '900', color: '#0A0A12' },
 
-  row: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, marginHorizontal: 16, marginBottom: 8, borderRadius: 18, padding: 12, paddingLeft: 16, overflow: 'hidden', borderWidth: 1, borderColor: C.line },
+  row: { backgroundColor: C.card, marginHorizontal: 16, marginBottom: 8, borderRadius: 18, padding: 12, paddingLeft: 16, overflow: 'hidden', borderWidth: 1, borderColor: C.line },
+  rowTop: { flexDirection: 'row', alignItems: 'center' },
   rowBar: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
   avatar: { width: 40, height: 40, borderRadius: 13, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', marginRight: 12, backgroundColor: C.card2 },
   avatarTx: { fontWeight: '900', fontSize: 14 },
   name: { color: C.text, fontSize: 16, fontWeight: '800', lineHeight: 26, flexShrink: 1 },
   subName: { color: C.muted, fontSize: 11, lineHeight: 18 },
   rowTags: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 },
+  rowNote: { fontSize: 12, marginTop: 4, lineHeight: 20 },
   tag: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2, marginRight: 4, marginTop: 3 },
   tagTx: { fontSize: 11, fontWeight: '700', lineHeight: 18 },
   timeBox: { alignItems: 'center', marginLeft: 8, minWidth: 48 },
   timeTx: { color: C.text, fontWeight: '800', fontSize: 13, marginTop: 2 },
   timeTx2: { color: C.muted, fontSize: 11 },
-  miniEdit: { marginTop: 6, padding: 4, borderRadius: 8, backgroundColor: C.card2 },
+
+  seg: { flexDirection: 'row', marginTop: 10 },
+  segBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 7, marginHorizontal: 2, borderRadius: 11, borderWidth: 1, backgroundColor: C.card2 },
+  segTx: { fontSize: 11, marginLeft: 3, fontWeight: '700', lineHeight: 18, flexShrink: 1 },
 
   fab: { position: 'absolute', right: 20, bottom: 30, width: 60, height: 60, borderRadius: 20, alignItems: 'center', justifyContent: 'center', elevation: 8 },
 
@@ -877,8 +1208,20 @@ const st = StyleSheet.create({
   grab: { width: 44, height: 5, borderRadius: 3, backgroundColor: C.line, alignSelf: 'center', marginBottom: 14 },
   bigAvatar: { width: 70, height: 70, borderRadius: 24, borderWidth: 2, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', backgroundColor: C.card2 },
   dName: { color: C.text, fontSize: 22, fontWeight: '900', textAlign: 'center', marginTop: 10, lineHeight: 34 },
-  dId: { color: C.muted, textAlign: 'center', marginBottom: 8 },
-  dSec: { color: C.amber, fontWeight: '800', fontSize: 12, marginTop: 10, marginBottom: 4, lineHeight: 20 },
+  dId: { color: C.muted, textAlign: 'center', marginBottom: 4 },
+  dSec: { color: C.amber, fontWeight: '800', fontSize: 12, marginTop: 14, marginBottom: 6, lineHeight: 20 },
+  bigSeg: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  bigSegBtn: { width: '19%', alignItems: 'center', paddingVertical: 10, borderRadius: 14, borderWidth: 1, backgroundColor: C.card2 },
+  bigSegTx: { fontSize: 10, fontWeight: '800', marginTop: 4, lineHeight: 16 },
+  noteSave: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
+  weekRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  weekCell: { alignItems: 'center', flex: 1 },
+  weekDot: { width: 32, height: 32, borderRadius: 11, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
+  weekTx: { color: C.muted, fontSize: 11, marginTop: 3 },
+  monthRow: { flexDirection: 'row', backgroundColor: C.card2, borderRadius: 14, paddingVertical: 10 },
+  monthCell: { flex: 1, alignItems: 'center' },
+  monthN: { fontSize: 20, fontWeight: '900' },
+  monthL: { color: C.muted, fontSize: 11, lineHeight: 18 },
   dBox: { backgroundColor: C.card2, borderRadius: 14, padding: 12 },
   dLine: { color: C.text, fontSize: 14, lineHeight: 26 },
   dK: { color: C.muted, fontWeight: '900', fontSize: 11 },
@@ -894,6 +1237,8 @@ const st = StyleSheet.create({
   pinT: { color: C.text, fontSize: 18, fontWeight: '900', textAlign: 'center', marginVertical: 10, lineHeight: 28 },
   pinIn: { backgroundColor: C.card2, color: C.text, fontSize: 24, textAlign: 'center', letterSpacing: 10, borderRadius: 14, paddingVertical: 12, marginBottom: 8 },
 
+  switchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 14, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: C.line },
+  switchTx: { color: C.text, flex: 1, marginLeft: 10, fontWeight: '700', lineHeight: 22 },
   fLbl: { color: C.muted, fontSize: 12, marginBottom: 6, fontWeight: '700', lineHeight: 20 },
   input: { backgroundColor: C.card, color: C.text, borderRadius: 14, borderWidth: 1, borderColor: C.line, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12 },
