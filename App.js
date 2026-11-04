@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, SectionList, TouchableOpacity, TextInput, Modal, ScrollView, Alert,
   StatusBar, Linking, SafeAreaView, KeyboardAvoidingView, Platform, Share, Switch,
-  LayoutAnimation, UIManager,
+  LayoutAnimation, UIManager, AppState,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -87,6 +87,17 @@ const T = {
     noData: 'ဒီလ မှတ်တမ်း မရှိသေးပါ', pastePh: 'Backup စာသားကို ဒီမှာ paste လုပ်ပါ', importBtn: 'သွင်းမည်',
     emptyAdmin: 'Admin ဝင်ပြီး ကိုယ်တိုင်ထည့်မည်', dataSec: 'Data နှင့် Backup', leaveSec: 'ခွင့်နှင့် သတိပေးချက်',
     contactSec: 'ဆက်သွယ်ရန် နှင့် စည်းကမ်း', secSec: 'လုံခြုံရေး', otQuick: 'OT အမြန်ထည့်',
+    cloud: 'Cloud Sync (ဖုန်းများ မျှသုံး)', projectId: 'Supabase Project ID', apiKey: 'Publishable key',
+    teamCode: 'အဖွဲ့ စကားဝှက် (အနည်းဆုံး ၈ လုံး)', connStr: 'ချိတ်ဆက်စာ paste (WNL1|...)', connect: 'ချိတ်ဆက်မည်',
+    disconnect: 'ချိတ်ဆက်မှု ဖြုတ်မည်', shareConn: 'အဖွဲ့ဝင်ဖုန်းသို့ ချိတ်ဆက်စာ ပို့မည်', syncNow: 'ယခု Sync လုပ်မည်',
+    syncOk: 'Sync ပြီး', syncBusy: 'Sync လုပ်နေသည်...', syncErr: 'Sync မအောင်မြင်ပါ', syncOff: 'Cloud မချိတ်ရသေး',
+    lastSync: 'နောက်ဆုံး Sync', pending: 'မပို့ရသေးသော ပြင်ဆင်မှု', codeShort: 'စကားဝှက် အနည်းဆုံး ၈ လုံး ထားပါ',
+    needAll: 'Project ID၊ key၊ စကားဝှက် အားလုံး ဖြည့်ပါ', connFail: 'Cloud ချိတ်ဆက်မရပါ',
+    connFailHint: 'အင်တာနက်၊ key မှန်/မမှန်၊ Supabase မှာ SQL Run ပြီး/မပြီး စစ်ပါ',
+    chooseQ: 'Cloud ပေါ်မှာ ဒီအဖွဲ့ရဲ့ data ရှိပြီးသားပါ။ ဘယ်ဟာကို သုံးမလဲ?', useCloud: 'Cloud data ယူမည်',
+    useLocal: 'ဒီဖုန်း data တင်မည်', created: 'Cloud အဖွဲ့အသစ် ဖန်တီးပြီး data တင်ပြီးပါပြီ', connected: 'ချိတ်ဆက်ပြီးပါပြီ',
+    shareWarn: 'ဒီစာထဲမှာ စကားဝှက်ပါလို့ အဖွဲ့ဝင်တွေကိုပဲ ပို့ပါ', cloudHint: 'ဖုန်းတိုင်းမှာ စကားဝှက်တူတူ ထည့်ရင် စာရင်းနဲ့ တက်ရောက်မှုကို မျှသုံးပါမယ်',
+    connectedTo: 'ချိတ်ထားသည်', clearCloudQ: 'Cloud ပေါ်ကပါ ဖျက်ပါမယ်၊ ဖုန်းအားလုံးမှာ ပျက်ပါမယ်။',
   },
   th: {
     title: 'รายชื่อพนักงาน', sub: 'เบทาโกร • โรงฆ่าสุกรนครปฐม', s1: 'กะ 1', s2: 'กะ 2',
@@ -137,6 +148,17 @@ const T = {
     noData: 'ยังไม่มีข้อมูลเดือนนี้', pastePh: 'วางข้อความสำรองข้อมูลที่นี่', importBtn: 'นำเข้า',
     emptyAdmin: 'เข้าแอดมินเพื่อเพิ่มเอง', dataSec: 'ข้อมูลและการสำรอง', leaveSec: 'การลาและการเตือน',
     contactSec: 'ติดต่อและข้อปฏิบัติ', secSec: 'ความปลอดภัย', otQuick: 'เพิ่ม OT ด่วน',
+    cloud: 'Cloud Sync (ใช้ร่วมหลายเครื่อง)', projectId: 'Supabase Project ID', apiKey: 'Publishable key',
+    teamCode: 'รหัสทีม (อย่างน้อย 8 ตัว)', connStr: 'วางข้อความเชื่อมต่อ (WNL1|...)', connect: 'เชื่อมต่อ',
+    disconnect: 'ยกเลิกการเชื่อมต่อ', shareConn: 'ส่งข้อความเชื่อมต่อให้เครื่องอื่น', syncNow: 'ซิงค์ตอนนี้',
+    syncOk: 'ซิงค์แล้ว', syncBusy: 'กำลังซิงค์...', syncErr: 'ซิงค์ไม่สำเร็จ', syncOff: 'ยังไม่เชื่อมต่อ Cloud',
+    lastSync: 'ซิงค์ล่าสุด', pending: 'รายการที่ยังไม่ได้ส่ง', codeShort: 'รหัสทีมต้องมีอย่างน้อย 8 ตัว',
+    needAll: 'กรอก Project ID, key และรหัสทีมให้ครบ', connFail: 'เชื่อมต่อ Cloud ไม่ได้',
+    connFailHint: 'ตรวจสอบอินเทอร์เน็ต, key และรัน SQL ใน Supabase แล้วหรือยัง',
+    chooseQ: 'มีข้อมูลของทีมนี้ใน Cloud แล้ว จะใช้ข้อมูลไหน?', useCloud: 'ใช้ข้อมูล Cloud',
+    useLocal: 'อัปโหลดข้อมูลเครื่องนี้', created: 'สร้างทีมใน Cloud และอัปโหลดแล้ว', connected: 'เชื่อมต่อแล้ว',
+    shareWarn: 'ข้อความนี้มีรหัสทีม ส่งให้เฉพาะคนในทีม', cloudHint: 'ใส่รหัสทีมเดียวกันทุกเครื่องเพื่อใช้รายชื่อและการเช็คชื่อร่วมกัน',
+    connectedTo: 'เชื่อมต่ออยู่', clearCloudQ: 'จะลบใน Cloud ด้วย และหายจากทุกเครื่อง',
   },
   en: {
     title: 'Worker List', sub: 'Betagro • Nakhon Pathom Swine Slaughterhouse', s1: 'Shift 1', s2: 'Shift 2',
@@ -187,6 +209,17 @@ const T = {
     noData: 'No records this month yet', pastePh: 'Paste the backup text here', importBtn: 'Import',
     emptyAdmin: 'Log in as admin to add', dataSec: 'Data & Backup', leaveSec: 'Leave & Warnings',
     contactSec: 'Contacts & Rules', secSec: 'Security', otQuick: 'Quick OT',
+    cloud: 'Cloud Sync (share across phones)', projectId: 'Supabase Project ID', apiKey: 'Publishable key',
+    teamCode: 'Team code (at least 8 characters)', connStr: 'Paste connection text (WNL1|...)', connect: 'Connect',
+    disconnect: 'Disconnect', shareConn: 'Send connection text to another phone', syncNow: 'Sync now',
+    syncOk: 'Synced', syncBusy: 'Syncing...', syncErr: 'Sync failed', syncOff: 'Cloud not connected',
+    lastSync: 'Last sync', pending: 'Changes not sent yet', codeShort: 'Team code must be at least 8 characters',
+    needAll: 'Fill in Project ID, key and team code', connFail: 'Could not connect to Cloud',
+    connFailHint: 'Check internet, the key, and that the SQL was run in Supabase',
+    chooseQ: 'This team already has data in the Cloud. Which data should be used?', useCloud: 'Use Cloud data',
+    useLocal: 'Upload this phone', created: 'Cloud team created and data uploaded', connected: 'Connected',
+    shareWarn: 'This text contains the team code — send it only to your team', cloudHint: 'Use the same team code on every phone to share the list and attendance',
+    connectedTo: 'Connected', clearCloudQ: 'This also deletes it in the Cloud, on every phone.',
   },
 };
 
@@ -261,7 +294,50 @@ const initialData = () => ({
   quota: { sick: 30, personal: 3, annual: 6 },
   warnAbsent: 3,
   lastBackup: '',
+  sync: { project: '', key: '', code: '', on: false, lastPull: '', rosterAt: '', lastOk: '' },
+  syncQ: {},          // pending attendance changes: { 'date|id': rec | null }
+  rosterDirty: false, // roster changed locally, not yet uploaded
 });
+
+/* ===================== CLOUD SYNC (Supabase RPC) ===================== */
+const rpc = async (cfg, fn, body) => {
+  const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), 20000) : null;
+  try {
+    const res = await fetch(`https://${cfg.project.trim()}.supabase.co/rest/v1/rpc/${fn}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: cfg.key.trim(), Authorization: `Bearer ${cfg.key.trim()}` },
+      body: JSON.stringify(body),
+      signal: ctl ? ctl.signal : undefined,
+    });
+    const txt = await res.text();
+    if (!res.ok) {
+      let msg = txt;
+      try { const j = JSON.parse(txt); msg = j.message || j.msg || j.error || txt; } catch (e) {}
+      throw new Error(`${res.status} ${msg}`.slice(0, 300));
+    }
+    return txt ? JSON.parse(txt) : null;
+  } finally { if (timer) clearTimeout(timer); }
+};
+const ROSTER_KEYS = ['workers', 'shiftPhone', 'linePhone', 'rules', 'quota', 'warnAbsent', 'lockAtt'];
+const rosterOf = (d) => { const r = {}; ROSTER_KEYS.forEach((k) => { r[k] = d[k]; }); return r; };
+const applyRoster = (d, r) => {
+  if (!r || !Array.isArray(r.workers)) return d;
+  const nd = { ...d };
+  ROSTER_KEYS.forEach((k) => { if (r[k] !== undefined && r[k] !== null) nd[k] = r[k]; });
+  return nd;
+};
+const allAttQ = (att) => {
+  const q = {};
+  Object.keys(att || {}).forEach((d) => Object.keys(att[d] || {}).forEach((id) => { q[d + '|' + id] = att[d][id]; }));
+  return q;
+};
+const splitKey = (k) => { const i = k.indexOf('|'); return [k.slice(0, i), k.slice(i + 1)]; };
+const parseConn = (txt) => {
+  const m = (txt || '').trim().split('|').map((x) => x.trim());
+  if (m[0] !== 'WNL1' || m.length < 3) return null;
+  return { project: m[1] || '', key: m[2] || '', code: m[3] || '' };
+};
 
 /* ===================== HELPERS ===================== */
 const MMD = '၀၁၂၃၄၅၆၇၈၉';
@@ -384,6 +460,12 @@ export default function App() {
   const [busOpen, setBusOpen] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteTx, setPasteTx] = useState('');
+  const [syncSt, setSyncSt] = useState('');
+  const [syncErr, setSyncErr] = useState('');
+  const [cForm, setCForm] = useState({ project: '', key: '', code: '', conn: '' });
+  const dataRef = useRef(null);
+  const syncRef = useRef(null);
+  const langRef = useRef('mm');
 
   const t = T[lang];
   const accent = shift === 1 ? C.amber : C.violet;
@@ -399,19 +481,95 @@ export default function App() {
         if (raw) {
           const p = JSON.parse(raw);
           const base = initialData();
-          setData({ ...base, ...p, att: p.att || {}, lockAtt: !!p.lockAtt, quota: { ...base.quota, ...(p.quota || {}) }, workers: p.workers || [] });
-        } else setData(initialData());
+          const nd0 = { ...base, ...p, att: p.att || {}, lockAtt: !!p.lockAtt, quota: { ...base.quota, ...(p.quota || {}) }, workers: p.workers || [], sync: { ...base.sync, ...(p.sync || {}) }, syncQ: p.syncQ || {} };
+          dataRef.current = nd0; setData(nd0);
+        } else { dataRef.current = initialData(); setData(dataRef.current); }
       } catch (e) {
-        setData(initialData());
+        dataRef.current = initialData(); setData(dataRef.current);
       }
     })();
   }, []);
 
   const save = (nd) => {
+    dataRef.current = nd;
     setData(nd);
     AsyncStorage.setItem(KEY, JSON.stringify(nd)).catch(() => {});
   };
+
+  /* ---------- cloud sync engine ---------- */
+  const syncing = useRef(false);
+  const pushTimer = useRef(null);
+  const schedulePush = () => {
+    if (pushTimer.current) clearTimeout(pushTimer.current);
+    pushTimer.current = setTimeout(() => { syncRef.current && syncRef.current(); }, 1500);
+  };
+  const saveRoster = (nd) => {
+    save({ ...nd, rosterDirty: !!(nd.sync && nd.sync.on) });
+    if (nd.sync && nd.sync.on) schedulePush();
+  };
+
+  const syncNow = async (manual) => {
+    const d0 = dataRef.current; const s = d0 && d0.sync;
+    if (!s || !s.on || syncing.current) return;
+    syncing.current = true; setSyncSt('busy');
+    try {
+      if (d0.rosterDirty) {
+        const r = await rpc(s, 'wnl_push_roster', { p_code: s.code, p_roster: rosterOf(d0) });
+        const c = dataRef.current;
+        save({ ...c, rosterDirty: false, sync: { ...c.sync, rosterAt: (r && r.roster_at) || c.sync.rosterAt } });
+      }
+      const q = { ...(dataRef.current.syncQ || {}) }; const keys = Object.keys(q);
+      for (let i = 0; i < keys.length; i += 400) {
+        const chunk = keys.slice(i, i + 400);
+        const rows = chunk.map((k) => { const [d, wid] = splitKey(k); return { d, wid, rec: q[k] || null }; });
+        await rpc(s, 'wnl_push_att', { p_code: s.code, p_rows: rows });
+        const c = dataRef.current; const nq = { ...(c.syncQ || {}) };
+        chunk.forEach((k) => { if (JSON.stringify(nq[k]) === JSON.stringify(q[k])) delete nq[k]; });
+        save({ ...c, syncQ: nq });
+      }
+      const since = s.lastPull || null; // server subtracts a 2-minute overlap
+      const p = await rpc(s, 'wnl_pull', { p_code: s.code, p_since: since });
+      const c = dataRef.current;
+      if (!p || !p.exists) {
+        // team vanished on the server: upload everything again on the next round
+        save({ ...c, rosterDirty: true, syncQ: { ...allAttQ(c.att), ...(c.syncQ || {}) } });
+        throw new Error('team not found – uploading again');
+      }
+      let nd = { ...c };
+      const newer = p.roster_at && (!c.sync.rosterAt || p.roster_at > c.sync.rosterAt);
+      if (newer && !c.rosterDirty) nd = applyRoster(nd, p.roster);
+      const pending = nd.syncQ || {};
+      const att = { ...nd.att }; const touched = {};
+      (p.att || []).forEach((r) => {
+        const k = r.d + '|' + r.wid; if (k in pending) return;
+        if (!touched[r.d]) { att[r.d] = { ...(att[r.d] || {}) }; touched[r.d] = true; }
+        if (r.rec) att[r.d][r.wid] = r.rec; else delete att[r.d][r.wid];
+      });
+      nd.att = att;
+      nd.sync = { ...nd.sync, lastPull: p.now, rosterAt: newer ? p.roster_at : nd.sync.rosterAt, lastOk: new Date().toISOString() };
+      if ((p.att || []).length || newer) anim();
+      save(nd);
+      setSyncSt('ok'); setSyncErr('');
+    } catch (e) {
+      setSyncSt('err'); setSyncErr(String((e && e.message) || e));
+      if (manual) Alert.alert(T[langRef.current].syncErr, String((e && e.message) || e));
+    } finally {
+      syncing.current = false;
+    }
+  };
+  syncRef.current = syncNow;
   const changeLang = (l) => { setLang(l); AsyncStorage.setItem(KEY + '_lang', l).catch(() => {}); };
+  langRef.current = lang;
+
+  // auto-sync: on start, every 45 s, and when the app comes back to the screen
+  const loaded = !!data;
+  useEffect(() => {
+    if (!loaded) return undefined;
+    syncRef.current && syncRef.current();
+    const iv = setInterval(() => { syncRef.current && syncRef.current(); }, 45000);
+    const sub = AppState.addEventListener ? AppState.addEventListener('change', (st2) => { if (st2 === 'active' && syncRef.current) syncRef.current(); }) : null;
+    return () => { clearInterval(iv); if (sub && sub.remove) sub.remove(); };
+  }, [loaded]);
 
   const day = (data && data.att[attDate]) || {};
   const stOf = (id) => (day[id] ? day[id].s : 'none');
@@ -490,7 +648,18 @@ export default function App() {
     if (data.lockAtt && !admin) { Alert.alert('🔒', t.locked); return false; }
     return true;
   };
-  const writeDay = (date, nd) => save({ ...data, att: { ...data.att, [date]: nd } });
+  const writeDay = (date, nd) => {
+    const cur = dataRef.current || data;
+    const old = cur.att[date] || {};
+    const q = { ...(cur.syncQ || {}) };
+    const on = cur.sync && cur.sync.on;
+    if (on) {
+      const ids = {}; Object.keys(old).forEach((id) => { ids[id] = 1; }); Object.keys(nd).forEach((id) => { ids[id] = 1; });
+      Object.keys(ids).forEach((id) => { if (JSON.stringify(old[id] || null) !== JSON.stringify(nd[id] || null)) q[date + '|' + id] = nd[id] || null; });
+    }
+    save({ ...cur, att: { ...cur.att, [date]: nd }, syncQ: q });
+    if (on) schedulePush();
+  };
 
   const mark = (w, s) => {
     if (!canMark()) return;
@@ -642,7 +811,7 @@ export default function App() {
 
   /* ---------- backup / restore ---------- */
   const doBackup = async () => {
-    const { pin, ...rest } = data;
+    const { pin, sync, syncQ, rosterDirty, ...rest } = data;
     const payload = { app: 'worker-name-list', v: 2, exportedAt: new Date().toISOString(), data: rest };
     const ok = await shareFile(`worker-backup-${todayIso}.json`, JSON.stringify(payload), 'application/json');
     if (ok) save({ ...data, lastBackup: todayIso });
@@ -662,8 +831,9 @@ export default function App() {
         quota: { ...base.quota, ...(data.quota || {}), ...(d.quota || {}) },
         rules: d.rules || data.rules,
         workers: d.workers.map((w) => ({ id: String(w.id), th: w.th || '', mm: w.mm || '', en: w.en || '', job: w.job || 'drive', time: w.time || '', bus: w.bus || '', note: w.note || '', shift: w.shift === 2 ? 2 : 1 })),
+        sync: data.sync, syncQ: data.sync.on ? { ...(data.syncQ || {}), ...allAttQ(d.att ? d.att : {}) } : {}, rosterDirty: false,
       };
-      save(nd); setPasteOpen(false); setPasteTx(''); setSetOpen(false);
+      saveRoster(nd); setPasteOpen(false); setPasteTx(''); setSetOpen(false);
       Alert.alert('✅', `${t.imported} (${num(nd.workers.length)} ${t.ppl})`);
     };
     if (!data.workers.length) return doIt();
@@ -707,20 +877,20 @@ export default function App() {
     if (data.workers.find((w) => w.id === f.id.trim() && w.id !== f._orig)) return Alert.alert(t.idExists);
     const clean = { id: f.id.trim(), th: f.th.trim(), mm: f.mm.trim(), en: f.en.trim(), job: f.job, time: f.time.trim(), bus: f.bus, note: f.note, shift: f.shift };
     const workers = f._orig ? data.workers.map((w) => (w.id === f._orig ? clean : w)) : [...data.workers, clean];
-    save({ ...data, workers });
+    saveRoster({ ...data, workers });
     setForm(null);
   };
 
   const delWorker = (w) => {
     Alert.alert(t.del, `${nameOf(w, lang)}\n${t.delQ}`, [
       { text: t.cancel, style: 'cancel' },
-      { text: t.del, style: 'destructive', onPress: () => { setDetailId(null); save({ ...data, workers: data.workers.filter((x) => x.id !== w.id) }); } },
+      { text: t.del, style: 'destructive', onPress: () => { setDetailId(null); saveRoster({ ...data, workers: data.workers.filter((x) => x.id !== w.id) }); } },
     ]);
   };
 
   const moveWorker = (w) => {
     const nw = { ...w, shift: w.shift === 1 ? 2 : 1, note: w.shift === 1 ? 'from1' : 'from2' };
-    save({ ...data, workers: data.workers.map((x) => (x.id === w.id ? nw : x)) });
+    saveRoster({ ...data, workers: data.workers.map((x) => (x.id === w.id ? nw : x)) });
     setDetailId(null);
   };
 
@@ -729,12 +899,13 @@ export default function App() {
       shiftPhone: data.shiftPhone, linePhone: data.linePhone, rules: { ...data.rules }, pin: '', lockAtt: data.lockAtt,
       qs: String(data.quota.sick), qp: String(data.quota.personal), qa: String(data.quota.annual), wa: String(data.warnAbsent),
     });
+    setCForm({ project: data.sync.project || '', key: data.sync.key || '', code: '', conn: '' });
     setSetOpen(true);
   };
   const saveSettings = () => {
     const s = sForm;
     const n = (v, d) => { const x = parseInt(v, 10); return isNaN(x) || x < 0 ? d : x; };
-    save({
+    saveRoster({
       ...data, shiftPhone: s.shiftPhone.trim(), linePhone: s.linePhone.trim(), rules: s.rules, lockAtt: s.lockAtt,
       pin: s.pin.trim() ? s.pin.trim() : data.pin,
       quota: { sick: n(s.qs, 30), personal: n(s.qp, 3), annual: n(s.qa, 6) }, warnAbsent: n(s.wa, 3),
@@ -743,10 +914,71 @@ export default function App() {
     Alert.alert(t.saved);
   };
   const clearAllAtt = () => {
-    Alert.alert(t.clearAll, t.clearAllQ, [
+    const on = data.sync.on;
+    Alert.alert(t.clearAll, on ? `${t.clearAllQ}\n${t.clearCloudQ}` : t.clearAllQ, [
       { text: t.cancel, style: 'cancel' },
-      { text: t.yes, style: 'destructive', onPress: () => { save({ ...data, att: {} }); setSetOpen(false); } },
+      {
+        text: t.yes, style: 'destructive', onPress: async () => {
+          if (on) {
+            try { await rpc(data.sync, 'wnl_clear_att', { p_code: data.sync.code }); } catch (e) { return Alert.alert(t.connFail, String(e.message || e)); }
+          }
+          save({ ...dataRef.current, att: {}, syncQ: {} }); setSetOpen(false);
+        },
+      },
     ]);
+  };
+
+  /* ---------- cloud connect ---------- */
+  const fillFromConn = (txt) => {
+    const c = parseConn(txt);
+    setCForm(c ? { ...cForm, ...c, code: c.code || cForm.code, conn: txt } : { ...cForm, conn: txt });
+  };
+  const connectCloud = async () => {
+    const cfg0 = { project: cForm.project.trim(), key: cForm.key.trim(), code: cForm.code.trim() };
+    if (!cfg0.project || !cfg0.key || !cfg0.code) return Alert.alert(t.needAll);
+    if (cfg0.code.length < 8) return Alert.alert(t.codeShort);
+    const cfg = { ...initialData().sync, ...cfg0, on: true };
+    setSyncSt('busy');
+    let p;
+    try { p = await rpc(cfg, 'wnl_pull', { p_code: cfg.code, p_since: null }); }
+    catch (e) { setSyncSt('err'); return Alert.alert(t.connFail, `${String(e.message || e)}\n\n${t.connFailHint}`); }
+    setSyncSt('');
+    const c = dataRef.current;
+    const uploadAll = () => {
+      save({ ...c, sync: cfg, syncQ: allAttQ(c.att), rosterDirty: true });
+      syncNow(true); Alert.alert('☁️', p.exists ? t.connected : t.created);
+    };
+    const useCloud = () => {
+      let nd = applyRoster({ ...c, sync: cfg, rosterDirty: false }, p.roster);
+      const cloudAtt = {};
+      (p.att || []).forEach((r) => { if (!r.rec) return; cloudAtt[r.d] = cloudAtt[r.d] || {}; cloudAtt[r.d][r.wid] = r.rec; });
+      const q = {};
+      const att = { ...cloudAtt };
+      Object.keys(c.att).forEach((d) => Object.keys(c.att[d]).forEach((id) => {
+        if (!cloudAtt[d] || !cloudAtt[d][id]) { att[d] = { ...(att[d] || {}), [id]: c.att[d][id] }; q[d + '|' + id] = c.att[d][id]; }
+      }));
+      nd = { ...nd, att, syncQ: q, sync: { ...cfg, lastPull: p.now, rosterAt: p.roster_at, lastOk: new Date().toISOString() } };
+      anim(); save(nd); setSyncSt('ok');
+      if (Object.keys(q).length) schedulePush();
+      Alert.alert('☁️', `${t.connected} (${num(nd.workers.length)} ${t.ppl})`);
+    };
+    if (!p.exists) return uploadAll();
+    if (!c.workers.length) return useCloud();
+    Alert.alert('☁️', t.chooseQ, [
+      { text: t.cancel, style: 'cancel' },
+      { text: t.useCloud, onPress: useCloud },
+      { text: t.useLocal, style: 'destructive', onPress: uploadAll },
+    ]);
+  };
+  const disconnectCloud = () => {
+    Alert.alert(t.disconnect, '', [
+      { text: t.cancel, style: 'cancel' },
+      { text: t.yes, style: 'destructive', onPress: () => { const c = dataRef.current; save({ ...c, sync: { ...c.sync, on: false, code: '' }, syncQ: {}, rosterDirty: false }); setSyncSt(''); } },
+    ]);
+  };
+  const shareConn = () => {
+    const s = data.sync;
+    Share.share({ message: `${t.shareWarn}\n\nWNL1|${s.project}|${s.key}|${s.code}` }).catch(() => {});
   };
 
   const call = (p) => { if (p) Linking.openURL('tel:' + p.replace(/[^0-9+]/g, '')).catch(() => {}); };
@@ -859,7 +1091,18 @@ export default function App() {
             <Text style={[st.langTx, lang === k && { color: '#0A0A12' }]}>{l}</Text>
           </TouchableOpacity>
         ))}
-        {data.lockAtt ? <Ionicons name="lock-closed" size={16} color={C.amber} style={{ marginLeft: 'auto' }} /> : null}
+        <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center' }}>
+          {data.lockAtt ? <Ionicons name="lock-closed" size={16} color={C.amber} style={{ marginRight: 10 }} /> : null}
+          {data.sync.on ? (
+            <TouchableOpacity onPress={() => syncNow(true)} style={[st.cloudPill, { borderColor: (syncSt === 'err' ? C.red : syncSt === 'busy' ? C.amber : C.green) + '88' }]}>
+              <Ionicons name={syncSt === 'err' ? 'cloud-offline' : syncSt === 'busy' ? 'cloud-upload' : 'cloud-done'} size={16}
+                color={syncSt === 'err' ? C.red : syncSt === 'busy' ? C.amber : C.green} />
+              {Object.keys(data.syncQ || {}).length || data.rosterDirty ? (
+                <Text style={[st.cloudN, { color: C.amber }]}>{num(Object.keys(data.syncQ || {}).length + (data.rosterDirty ? 1 : 0))}</Text>
+              ) : null}
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
 
       {admin && (
@@ -1492,6 +1735,43 @@ export default function App() {
                 <TouchableOpacity onPress={saveSettings} style={[st.iconBtn, { backgroundColor: C.amber, borderColor: C.amber }]}><Ionicons name="checkmark" size={20} color="#0A0A12" /></TouchableOpacity>
               </View>
               <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
+                <SecTitle icon="cloud-done" text={t.cloud} color={C.green} />
+                <View style={st.setCard}>
+                  {data.sync.on ? (
+                    <View>
+                      <View style={st.switchRow}>
+                        <Ionicons name={syncSt === 'err' ? 'cloud-offline' : 'cloud-done'} size={22} color={syncSt === 'err' ? C.red : C.green} />
+                        <View style={{ flex: 1, marginLeft: 10 }}>
+                          <Text style={st.switchTx}>{t.connectedTo}: {data.sync.project}</Text>
+                          <Text style={st.smallMuted}>{t.lastSync}: {data.sync.lastOk ? new Date(data.sync.lastOk).toLocaleString() : '—'}</Text>
+                          <Text style={st.smallMuted}>{t.pending}: {num(Object.keys(data.syncQ || {}).length + (data.rosterDirty ? 1 : 0))}</Text>
+                          {syncSt === 'err' && syncErr ? <Text style={[st.smallMuted, { color: C.red }]} numberOfLines={3}>{syncErr}</Text> : null}
+                        </View>
+                      </View>
+                      <TouchableOpacity onPress={() => syncNow(true)} style={[st.bigBtn, { backgroundColor: C.green, marginTop: 0 }]}>
+                        <Ionicons name="sync" size={18} color="#0A0A12" /><Text style={st.bigBtnTx}>{syncSt === 'busy' ? t.syncBusy : t.syncNow}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={shareConn} style={[st.bigBtn, { backgroundColor: C.card2, borderWidth: 1, borderColor: C.green }]}>
+                        <Ionicons name="share-social" size={18} color={C.green} /><Text style={[st.bigBtnTx, { color: C.green }]}>{t.shareConn}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={disconnectCloud} style={[st.bigBtn, { backgroundColor: C.card2 }]}>
+                        <Ionicons name="unlink" size={18} color={C.red} /><Text style={[st.bigBtnTx, { color: C.red }]}>{t.disconnect}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View>
+                      <Text style={[st.smallMuted, { marginTop: 0, marginBottom: 10 }]}>{t.cloudHint}</Text>
+                      <Field label={t.connStr} value={cForm.conn} onChangeText={fillFromConn} autoCapitalize="none" autoCorrect={false} placeholder="WNL1|xxxx|sb_publishable_...|..." />
+                      <Field label={t.projectId} value={cForm.project} onChangeText={(v) => setCForm({ ...cForm, project: v })} autoCapitalize="none" autoCorrect={false} />
+                      <Field label={t.apiKey} value={cForm.key} onChangeText={(v) => setCForm({ ...cForm, key: v })} autoCapitalize="none" autoCorrect={false} />
+                      <Field label={t.teamCode} value={cForm.code} onChangeText={(v) => setCForm({ ...cForm, code: v })} autoCapitalize="none" autoCorrect={false} />
+                      <TouchableOpacity onPress={connectCloud} style={[st.bigBtn, { backgroundColor: C.green, marginTop: 0 }]}>
+                        <Ionicons name={syncSt === 'busy' ? 'hourglass' : 'cloud-upload'} size={18} color="#0A0A12" /><Text style={st.bigBtnTx}>{syncSt === 'busy' ? t.syncBusy : t.connect}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
                 <SecTitle icon="cloud" text={t.dataSec} color={C.cyan} />
                 <View style={st.setCard}>
                   <Text style={st.smallMuted}>
@@ -1577,6 +1857,8 @@ const st = StyleSheet.create({
 
   adminBar: { marginHorizontal: 16, marginBottom: 10, backgroundColor: C.amber, borderRadius: 10, paddingVertical: 5, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
   adminBarTx: { color: '#0A0A12', fontWeight: '900', marginLeft: 6, letterSpacing: 2, fontSize: 12, lineHeight: 20 },
+  cloudPill: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 14, paddingHorizontal: 9, paddingVertical: 5, backgroundColor: C.card },
+  cloudN: { fontWeight: '900', fontSize: 12, marginLeft: 4 },
   remind: { marginHorizontal: 16, marginBottom: 10, backgroundColor: C.cyan, borderRadius: 14, padding: 10, flexDirection: 'row', alignItems: 'center' },
   remindTx: { color: '#0A0A12', fontWeight: '800', marginLeft: 8, flex: 1, fontSize: 12, lineHeight: 20 },
 
