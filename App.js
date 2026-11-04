@@ -6,6 +6,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   try { UIManager.setLayoutAnimationEnabledExperimental(true); } catch (e) {}
@@ -15,21 +18,23 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const C = {
   bg: '#0A0A12', card: '#151522', card2: '#1D1D2E', line: '#2A2A40',
   text: '#F5F5FA', muted: '#8C8CA8', amber: '#FFB020', violet: '#A78BFA',
-  pink: '#FF5C8A', green: '#34D399', cyan: '#22D3EE', red: '#F87171',
+  pink: '#FF5C8A', green: '#34D399', cyan: '#22D3EE', red: '#F87171', yellow: '#FDE047',
 };
 const KEY = 'betagro_roster_v1';
 
-/* ===================== ATTENDANCE STATUS ===================== */
+/* ===================== ATTENDANCE ===================== */
 const STATUS = {
-  absent: { icon: 'close-circle', color: '#F87171' },
-  leave: { icon: 'document-text', color: '#FB923C' },
-  off: { icon: 'bed', color: '#60A5FA' },
-  late: { icon: 'alarm', color: '#E879F9' },
-  present: { icon: 'checkmark-circle', color: '#34D399' },
-  none: { icon: 'ellipse-outline', color: '#8C8CA8' },
+  absent: { icon: 'close-circle', color: '#F87171', code: 'A' },
+  leave: { icon: 'document-text', color: '#FB923C', code: 'L' },
+  off: { icon: 'bed', color: '#60A5FA', code: 'O' },
+  late: { icon: 'alarm', color: '#E879F9', code: 'LT' },
+  present: { icon: 'checkmark-circle', color: '#34D399', code: 'P' },
+  none: { icon: 'ellipse-outline', color: '#8C8CA8', code: '' },
 };
-const ORDER = ['absent', 'leave', 'off', 'late', 'present', 'none']; // top → bottom
-const SEG = ['present', 'absent', 'leave', 'off', 'late']; // buttons on each card
+const ORDER = ['absent', 'leave', 'off', 'late', 'present', 'none'];
+const SEG = ['present', 'absent', 'leave', 'off', 'late'];
+const LTYPES = ['sick', 'personal', 'annual', 'maternity', 'other'];
+const LT_ICON = { sick: 'medkit', personal: 'briefcase', annual: 'airplane', maternity: 'heart', other: 'ellipsis-horizontal' };
 
 /* ===================== UI TEXT (3 LANG) ===================== */
 const T = {
@@ -46,22 +51,42 @@ const T = {
     delQ: 'ဒီဝန်ထမ်းကို ဖျက်မှာ သေချာလား?', move: 'ဆိုင်းပြောင်း', add: 'ဝန်ထမ်းအသစ်ထည့်',
     nameTh: 'နာမည် (ထိုင်း)', nameMm: 'နာမည် (မြန်မာ)', nameEn: 'နာမည် (English)', shiftLbl: 'ဆိုင်း',
     noteLbl: 'အခြေအနေ', none: 'မရှိ', settings: 'Admin ဆက်တင်', newPin: 'PIN အသစ် (ပြောင်းချင်မှ ဖြည့်)',
-    reset: 'မူရင်းဝန်ထမ်းစာရင်းသို့ ပြန်ထားမည်', resetQ: 'ဝန်ထမ်းစာရင်း ပြင်ထားသမျှ ပျက်မည်။ သေချာလား?',
     shiftSup: 'ဆိုင်းခေါင်းဆောင် ဖုန်း', lineSup: 'လိုင်းခေါင်းဆောင် ဖုန်း', empty: 'ရှာမတွေ့ပါ',
     required: 'ID နှင့် နာမည်တစ်ခုခု လိုအပ်သည်', yes: 'ဟုတ်ကဲ့', idExists: 'ဒီ ID ရှိပြီးသားပါ',
     names: 'နာမည် ၃ ဘာသာ', rulesLbl: 'စည်းကမ်း', logout: 'Admin မှ ထွက်မည်', saved: 'သိမ်းပြီးပါပြီ',
-    adminMode: 'ADMIN MODE', jobAll: 'တာဝန် ၃ ဘာသာ', tapHint: 'ခလုတ်နှိပ်ပြီး တက်ရောက်မှုမှတ်ပါ',
-    today: 'ယနေ့', attTitle: 'ယနေ့ တက်ရောက်မှု', marked: 'မှတ်ပြီး', allPresent: 'ကျန်သူအားလုံး လာ',
+    adminMode: 'ADMIN MODE', jobAll: 'တာဝန် ၃ ဘာသာ', tapHint: 'ခလုတ်နှိပ်ပြီး မှတ်ပါ • နာမည်နှိပ်ပြီး OT/အသေးစိတ်',
+    today: 'ယနေ့', attTitle: 'တက်ရောက်မှု', marked: 'မှတ်ပြီး', allPresent: 'ကျန်သူအားလုံး လာ',
     allPresentQ: 'မမှတ်ရသေးသူ အားလုံးကို "အလုပ်လာ" လို့ မှတ်မလား?', share: 'ပို့မည်', clearDay: 'ရှင်းမည်',
     clearDayQ: 'ဒီရက် ဒီဆိုင်းရဲ့ မှတ်ထားတာတွေ အကုန်ဖျက်မလား?', locked: 'Admin သာ တက်ရောက်မှု မှတ်နိုင်သည်',
     lockAtt: 'Admin သာ တက်ရောက်မှု မှတ်ခွင့်ရှိမည်', clearAll: 'တက်ရောက်မှု မှတ်တမ်းအားလုံး ဖျက်မည်',
     clearAllQ: 'ရက်အားလုံးရဲ့ တက်ရောက်မှု မှတ်တမ်း ပျက်မည်။ သေချာလား?', note: 'မှတ်ချက်',
-    notePh: 'ဥပမာ – နေမကောင်း၊ ဆေးခန်းသွား...', month: 'ဒီလ စာရင်း', week: '၇ ရက် မှတ်တမ်း',
-    status: 'ယနေ့ အခြေအနေ', nothing: 'မှတ်ရန် မရှိတော့ပါ', reportBy: 'အလုပ်သမားစာရင်း App',
+    notePh: 'ဥပမာ – နေမကောင်း၊ ဆေးခန်းသွား...', month: 'ဒီလ စာရင်း', status: 'အခြေအနေ',
+    nothing: 'မှတ်ရန် မရှိတော့ပါ', reportBy: 'အလုပ်သမားစာရင်း App',
     st: { present: 'အလုပ်လာ', absent: 'အလုပ်ပျက်', leave: 'ခွင့်ယူ', off: 'နား', late: 'နောက်ကျ', none: 'မမှတ်ရသေး' },
     sec: { present: 'အလုပ်လာသူ', absent: 'အလုပ်ပျက်သူ', leave: 'ခွင့်ယူသူ', off: 'နားသူ', late: 'နောက်ကျသူ', none: 'မမှတ်ရသေးသူ' },
     short: { present: 'လာ', absent: 'ပျက်', leave: 'ခွင့်', off: 'နား', late: 'နောက်ကျ' },
     wd: ['တနင်္ဂနွေ', 'တနင်္လာ', 'အင်္ဂါ', 'ဗုဒ္ဓဟူး', 'ကြာသပတေး', 'သောကြာ', 'စနေ'],
+    wdS: ['နွေ', 'လာ', 'ဂါ', 'ဟူး', 'တေး', 'ကြာ', 'နေ'],
+    report: 'လချုပ် Report', busList: 'ကားလိုင်း စာရင်း', riders: 'လိုက်မည့်သူ', noRiders: 'လိုက်မည့်သူ မရှိပါ',
+    backup: 'Backup ထုတ်မည်', restore: 'Backup ပြန်သွင်းမည်', paste: 'စာသား paste ဖြင့် သွင်းမည်',
+    importFile: 'ဖိုင်မှ သွင်းမည်', welcome: 'ဝန်ထမ်းစာရင်း မရှိသေးပါ',
+    welcomeSub: 'ပေးထားတဲ့ စာရင်းဖိုင် (.json) ကို သွင်းပါ၊ ဒါမှမဟုတ် Admin ဝင်ပြီး ကိုယ်တိုင်ထည့်ပါ',
+    importQ: 'ဝန်ထမ်း {w} ယောက်၊ မှတ်တမ်း {d} ရက် ပါပါတယ်။ လက်ရှိ data ကို အစားထိုးမလား?',
+    badFile: 'ဖိုင်မှားနေပါတယ် (ဒီ app ရဲ့ backup ဖိုင် မဟုတ်ပါ)', imported: 'သွင်းပြီးပါပြီ',
+    lastBackup: 'နောက်ဆုံး Backup', never: 'မလုပ်ရသေးပါ', daysAgo: 'ရက် အရင်က',
+    backupRemind: 'Backup မလုပ်ရသေးတာ ကြာပြီ — နှိပ်ပြီး ယခုလုပ်ပါ', backupHint: 'Backup ဖိုင်ကို LINE Keep / Google Drive ထဲ သိမ်းထားပါ',
+    leaveType: 'ခွင့်အမျိုးအစား',
+    lt: { sick: 'ဖျားနာခွင့်', personal: 'ကိစ္စခွင့်', annual: 'နှစ်ပတ်လည်ခွင့်', maternity: 'မီးဖွားခွင့်', other: 'အခြား' },
+    yearUse: 'ဒီနှစ် ခွင့်သုံးစွဲမှု', remain: 'ကျန်', quota: 'တစ်နှစ် ခွင့်ရက် (ရက်)',
+    arrival: 'ရောက်ချိန်', lateBy: 'နောက်ကျ', min: 'မိနစ်', hrs: 'နာရီ',
+    ot: 'OT', otIn: 'OT ဝင်ချိန်', otOut: 'OT ထွက်ချိန်', otTotal: 'OT စုစုပေါင်း', clearOt: 'OT ဖျက်',
+    saveRec: 'မှတ်တမ်း သိမ်းမည်', badTime: 'အချိန်ပုံစံ မှားနေသည် (ဥပမာ 06:30)',
+    warn: 'သတိ', warnTx: 'ဒီလ {n} ရက် ပျက်', warnLbl: 'သတိပေးမည့် ပျက်ရက် (တစ်လ)',
+    calendar: 'ဒီလ ပြက္ခဒိန်', exportCsv: 'Excel (CSV) ထုတ်', shareTxt: 'စာသား ပို့',
+    workDays: 'လုပ်ရက်', otHours: 'OT နာရီ', lateTotal: 'နောက်ကျ မိနစ်', shiftAll: 'ဆိုင်းအားလုံး',
+    noData: 'ဒီလ မှတ်တမ်း မရှိသေးပါ', pastePh: 'Backup စာသားကို ဒီမှာ paste လုပ်ပါ', importBtn: 'သွင်းမည်',
+    emptyAdmin: 'Admin ဝင်ပြီး ကိုယ်တိုင်ထည့်မည်', dataSec: 'Data နှင့် Backup', leaveSec: 'ခွင့်နှင့် သတိပေးချက်',
+    contactSec: 'ဆက်သွယ်ရန် နှင့် စည်းကမ်း', secSec: 'လုံခြုံရေး', otQuick: 'OT အမြန်ထည့်',
   },
   th: {
     title: 'รายชื่อพนักงาน', sub: 'เบทาโกร • โรงฆ่าสุกรนครปฐม', s1: 'กะ 1', s2: 'กะ 2',
@@ -76,22 +101,42 @@ const T = {
     delQ: 'ยืนยันลบพนักงานคนนี้?', move: 'ย้ายกะ', add: 'เพิ่มพนักงาน',
     nameTh: 'ชื่อ (ไทย)', nameMm: 'ชื่อ (พม่า)', nameEn: 'ชื่อ (อังกฤษ)', shiftLbl: 'กะ',
     noteLbl: 'สถานะ', none: 'ไม่มี', settings: 'ตั้งค่าแอดมิน', newPin: 'PIN ใหม่ (ใส่เมื่อต้องการเปลี่ยน)',
-    reset: 'คืนค่ารายชื่อพนักงานเดิม', resetQ: 'รายชื่อที่แก้ไขจะหายทั้งหมด ยืนยัน?',
     shiftSup: 'เบอร์หัวหน้ากะ', lineSup: 'เบอร์หัวหน้าสาย', empty: 'ไม่พบข้อมูล',
     required: 'ต้องมีรหัสและชื่ออย่างน้อยหนึ่งภาษา', yes: 'ยืนยัน', idExists: 'รหัสนี้มีอยู่แล้ว',
     names: 'ชื่อ 3 ภาษา', rulesLbl: 'ข้อปฏิบัติ', logout: 'ออกจากแอดมิน', saved: 'บันทึกแล้ว',
-    adminMode: 'โหมดแอดมิน', jobAll: 'จุดงาน 3 ภาษา', tapHint: 'แตะปุ่มเพื่อเช็คชื่อ',
-    today: 'วันนี้', attTitle: 'การมาทำงาน', marked: 'บันทึกแล้ว', allPresent: 'ที่เหลือมาทั้งหมด',
+    adminMode: 'โหมดแอดมิน', jobAll: 'จุดงาน 3 ภาษา', tapHint: 'แตะปุ่มเพื่อเช็คชื่อ • แตะชื่อเพื่อ OT/รายละเอียด',
+    today: 'วันนี้', attTitle: 'การมาทำงาน', marked: 'เช็คแล้ว', allPresent: 'ที่เหลือมาทั้งหมด',
     allPresentQ: 'บันทึกคนที่ยังไม่เช็คทั้งหมดเป็น "มาทำงาน"?', share: 'ส่งรายงาน', clearDay: 'ล้าง',
     clearDayQ: 'ลบการเช็คชื่อของกะนี้ในวันนี้ทั้งหมด?', locked: 'เฉพาะแอดมินเท่านั้นที่เช็คชื่อได้',
     lockAtt: 'ให้เฉพาะแอดมินเช็คชื่อ', clearAll: 'ลบประวัติการเช็คชื่อทั้งหมด',
     clearAllQ: 'ประวัติการเช็คชื่อทุกวันจะหายไป ยืนยัน?', note: 'หมายเหตุ',
-    notePh: 'เช่น ป่วย, ไปหาหมอ...', month: 'สรุปเดือนนี้', week: 'ย้อนหลัง 7 วัน',
-    status: 'สถานะวันนี้', nothing: 'ไม่มีคนที่ต้องเช็คแล้ว', reportBy: 'แอปรายชื่อพนักงาน',
+    notePh: 'เช่น ป่วย, ไปหาหมอ...', month: 'สรุปเดือนนี้', status: 'สถานะ',
+    nothing: 'ไม่มีคนที่ต้องเช็คแล้ว', reportBy: 'แอปรายชื่อพนักงาน',
     st: { present: 'มาทำงาน', absent: 'ขาดงาน', leave: 'ลา', off: 'หยุด', late: 'มาสาย', none: 'ยังไม่เช็ค' },
     sec: { present: 'มาทำงาน', absent: 'ขาดงาน', leave: 'ลางาน', off: 'วันหยุด', late: 'มาสาย', none: 'ยังไม่เช็คชื่อ' },
     short: { present: 'มา', absent: 'ขาด', leave: 'ลา', off: 'หยุด', late: 'สาย' },
     wd: ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'],
+    wdS: ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'],
+    report: 'รายงานประจำเดือน', busList: 'รายชื่อตามสายรถ', riders: 'คนขึ้นรถ', noRiders: 'ไม่มีคนขึ้นรถ',
+    backup: 'สำรองข้อมูล', restore: 'กู้คืนข้อมูล', paste: 'นำเข้าด้วยการวางข้อความ',
+    importFile: 'นำเข้าจากไฟล์', welcome: 'ยังไม่มีรายชื่อพนักงาน',
+    welcomeSub: 'นำเข้าไฟล์รายชื่อ (.json) หรือเข้าแอดมินเพื่อเพิ่มเอง',
+    importQ: 'มีพนักงาน {w} คน ประวัติ {d} วัน แทนที่ข้อมูลปัจจุบัน?',
+    badFile: 'ไฟล์ไม่ถูกต้อง (ไม่ใช่ไฟล์สำรองของแอปนี้)', imported: 'นำเข้าแล้ว',
+    lastBackup: 'สำรองล่าสุด', never: 'ยังไม่เคย', daysAgo: 'วันที่แล้ว',
+    backupRemind: 'ไม่ได้สำรองข้อมูลนานแล้ว — แตะเพื่อสำรองตอนนี้', backupHint: 'เก็บไฟล์สำรองไว้ใน LINE Keep / Google Drive',
+    leaveType: 'ประเภทการลา',
+    lt: { sick: 'ลาป่วย', personal: 'ลากิจ', annual: 'ลาพักร้อน', maternity: 'ลาคลอด', other: 'อื่นๆ' },
+    yearUse: 'การลาปีนี้', remain: 'เหลือ', quota: 'วันลาต่อปี (วัน)',
+    arrival: 'เวลามาถึง', lateBy: 'สาย', min: 'นาที', hrs: 'ชม.',
+    ot: 'OT', otIn: 'OT เข้า', otOut: 'OT ออก', otTotal: 'รวม OT', clearOt: 'ลบ OT',
+    saveRec: 'บันทึก', badTime: 'รูปแบบเวลาไม่ถูกต้อง (เช่น 06:30)',
+    warn: 'เตือน', warnTx: 'เดือนนี้ขาด {n} วัน', warnLbl: 'จำนวนวันขาดที่ต้องเตือน (ต่อเดือน)',
+    calendar: 'ปฏิทินเดือนนี้', exportCsv: 'ส่งออก Excel (CSV)', shareTxt: 'ส่งข้อความ',
+    workDays: 'วันทำงาน', otHours: 'ชม. OT', lateTotal: 'นาทีที่สาย', shiftAll: 'ทุกกะ',
+    noData: 'ยังไม่มีข้อมูลเดือนนี้', pastePh: 'วางข้อความสำรองข้อมูลที่นี่', importBtn: 'นำเข้า',
+    emptyAdmin: 'เข้าแอดมินเพื่อเพิ่มเอง', dataSec: 'ข้อมูลและการสำรอง', leaveSec: 'การลาและการเตือน',
+    contactSec: 'ติดต่อและข้อปฏิบัติ', secSec: 'ความปลอดภัย', otQuick: 'เพิ่ม OT ด่วน',
   },
   en: {
     title: 'Worker List', sub: 'Betagro • Nakhon Pathom Swine Slaughterhouse', s1: 'Shift 1', s2: 'Shift 2',
@@ -106,22 +151,42 @@ const T = {
     delQ: 'Delete this worker?', move: 'Move shift', add: 'Add worker',
     nameTh: 'Name (Thai)', nameMm: 'Name (Myanmar)', nameEn: 'Name (English)', shiftLbl: 'Shift',
     noteLbl: 'Status', none: 'None', settings: 'Admin Settings', newPin: 'New PIN (only to change)',
-    reset: 'Reset worker list to original', resetQ: 'All worker edits will be lost. Continue?',
     shiftSup: 'Shift supervisor phone', lineSup: 'Line supervisor phone', empty: 'Nothing found',
     required: 'ID and at least one name are required', yes: 'Yes', idExists: 'This ID already exists',
     names: 'Name in 3 languages', rulesLbl: 'Rules', logout: 'Exit Admin', saved: 'Saved',
-    adminMode: 'ADMIN MODE', jobAll: 'Job in 3 languages', tapHint: 'Tap the buttons to mark attendance',
+    adminMode: 'ADMIN MODE', jobAll: 'Job in 3 languages', tapHint: 'Tap buttons to mark • tap a name for OT/details',
     today: 'Today', attTitle: 'Attendance', marked: 'marked', allPresent: 'Rest all present',
     allPresentQ: 'Mark everyone not yet marked as "Present"?', share: 'Send report', clearDay: 'Clear',
     clearDayQ: 'Remove all marks for this shift on this day?', locked: 'Only admin can mark attendance',
     lockAtt: 'Only admin can mark attendance', clearAll: 'Delete all attendance history',
     clearAllQ: 'Attendance history for every day will be lost. Continue?', note: 'Note',
-    notePh: 'e.g. sick, hospital visit...', month: 'This month', week: 'Last 7 days',
-    status: "Today's status", nothing: 'Nobody left to mark', reportBy: 'Worker List App',
+    notePh: 'e.g. sick, hospital visit...', month: 'This month', status: 'Status',
+    nothing: 'Nobody left to mark', reportBy: 'Worker List App',
     st: { present: 'Present', absent: 'Absent', leave: 'Leave', off: 'Day off', late: 'Late', none: 'Not marked' },
     sec: { present: 'Present', absent: 'Absent', leave: 'On leave', off: 'Day off', late: 'Late', none: 'Not marked yet' },
     short: { present: 'In', absent: 'Absent', leave: 'Leave', off: 'Off', late: 'Late' },
     wd: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+    wdS: ['S', 'M', 'T', 'W', 'T', 'F', 'S'],
+    report: 'Monthly Report', busList: 'Bus Route List', riders: 'Riders', noRiders: 'No riders',
+    backup: 'Create backup', restore: 'Restore backup', paste: 'Import by pasting text',
+    importFile: 'Import from file', welcome: 'No workers yet',
+    welcomeSub: 'Import the roster file (.json), or log in as admin to add workers',
+    importQ: '{w} workers and {d} days of records. Replace current data?',
+    badFile: 'Invalid file (not a backup from this app)', imported: 'Imported',
+    lastBackup: 'Last backup', never: 'Never', daysAgo: 'days ago',
+    backupRemind: 'No backup for a while — tap to back up now', backupHint: 'Keep the backup file in LINE Keep / Google Drive',
+    leaveType: 'Leave type',
+    lt: { sick: 'Sick', personal: 'Personal', annual: 'Annual', maternity: 'Maternity', other: 'Other' },
+    yearUse: 'Leave used this year', remain: 'left', quota: 'Leave days per year',
+    arrival: 'Arrival time', lateBy: 'Late', min: 'min', hrs: 'h',
+    ot: 'OT', otIn: 'OT start', otOut: 'OT end', otTotal: 'OT total', clearOt: 'Clear OT',
+    saveRec: 'Save record', badTime: 'Wrong time format (e.g. 06:30)',
+    warn: 'Warning', warnTx: '{n} absences this month', warnLbl: 'Warn at absences per month',
+    calendar: 'This month', exportCsv: 'Export Excel (CSV)', shareTxt: 'Send text',
+    workDays: 'Work days', otHours: 'OT hours', lateTotal: 'Late minutes', shiftAll: 'All shifts',
+    noData: 'No records this month yet', pastePh: 'Paste the backup text here', importBtn: 'Import',
+    emptyAdmin: 'Log in as admin to add', dataSec: 'Data & Backup', leaveSec: 'Leave & Warnings',
+    contactSec: 'Contacts & Rules', secSec: 'Security', otQuick: 'Quick OT',
   },
 };
 
@@ -177,141 +242,25 @@ const JOBS = {
 const LI = { th: 0, mm: 1, en: 2 };
 const jobName = (k, l) => (JOBS[k] ? JOBS[k][LI[l]] : k);
 
-/* ===================== DATA FROM THE SHEETS (4/11/2569) =====================
-   [id, Thai, Myanmar, English, job, time(null=default, ''=not set), bus R/P, note] */
-const S1 = [
-  ['0079072', 'ศิรินันทร์ ศรีสุขสร้อย', 'စိရိနန် သီရိစုခ်ဆွိုင်', 'Sirinan Srisuksoi', 'lead', '05:30-14:30'],
-  ['0180400', 'จ่อ', 'ကျော်', 'Kyaw', 'lead', '05:30-14:30'],
-  ['0240740', 'ยา ซา พิว', 'ရာဇာဖြိုး', 'Yar Zar Phyo', 'recv', '03:00-12:00'],
-  ['0200975', 'จไร เยือก', 'ဂျာရိုင် ယွတ်', 'Jarai Yuak', 'recv', '03:00-12:00'],
-  ['0228875', 'ดูลิน ทุน', 'ဒူလင်းထွန်း', 'Du Lin Tun', 'recv', '03:00-12:00'],
-  ['0183537', 'เซ ซาน นิ', 'ဇေဇံနီ', 'Zay Zan Ni', 'hangPierce', '05:30-14:30'],
-  ['0178083', 'ซอ เท็ด ปาย', 'စောထက်ပိုင်', 'Saw Htet Paing', 'hangPierce', '05:30-14:30'],
-  ['0167396', 'อู', 'ဦး', 'Oo', 'stick', '05:30-14:30'],
-  ['0178080', 'ไว ลิน คุน', 'ဝေလင်းခွန်', 'Wai Lin Khun', 'openWhite', '05:30-14:30'],
-  ['0184417', 'กอง เทะ ฮิน', 'ကောင်းထက်ဟိန်း', 'Kaung Htet Hein', 'drive', '05:30-14:30', 'R'],
-  ['0178085', 'เท็ด ลิน จอ', 'ထက်လင်းကျော်', 'Htet Lin Kyaw', 'split', '05:30-14:30'],
-  ['0178079', 'กอ ลิน จอ', 'ကိုလင်းကျော်', 'Ko Lin Kyaw', 'weight', '07:00-14:30'],
-  ['0207341', 'ทูน ทูน', 'ထွန်းထွန်း', 'Tun Tun', 'boilBlood'],
-  ['0108839', 'ณัชชา วุฒิยาสาร', 'နတ်ချာ ဝုတ်ထိယာဆန်', 'Natcha Wuttiyasan', 'spine'],
-  ['0183542', 'สุ่ย ชิน อู่', 'ဆွေစင်ဦး', 'Swe Sin Oo', 'scrapeBody', null, 'P'],
-  ['0228872', 'ซา ปา อู', 'ဇာပါဦး', 'Zar Pa Oo', 'sepInt'],
-  ['0198770', 'มิว ลาย อู', 'မျိုးလှိုင်ဦး', 'Myo Hlaing Oo', 'open', null, 'R'],
-  ['0240731', 'โซ เท', 'စိုးဌေး', 'Soe Htay', 'drive', null, '', 'new'],
-  ['0178115', 'พิว พิว วิน', 'ဖြူဖြူဝင်း', 'Phyu Phyu Win', 'sepRed'],
-  ['0180405', 'จู จู มิ', 'ကြူကြူမိ', 'Kyu Kyu Mi', 'washLarge', null, 'P'],
-  ['0168244', 'คาย นี เวย์', 'ခိုင်နီဝေ', 'Khaing Ni Wai', 'sepSmall'],
-  ['0198786', 'นอ ยี โซ', 'နော်ရီစိုး', 'Naw Yi Soe', 'turn', null, 'P'],
-  ['0229456', 'ซาน วิน มาว', 'စန်းဝင်းမော်', 'San Win Maw', 'strip'],
-  ['0167408', 'หน่าย ทุน', 'နိုင်ထွန်း', 'Naing Tun', 'cutHead'],
-  ['0168273', 'เย มิน ดู', 'ရဲမင်းဒူး', 'Ye Min Du', 'drive', '05:30-15:00'],
-  ['0219051', 'เม เย วิน เดย์', 'မေရဲဝင်းဒေး', 'May Ye Win Day', 'open'],
-  ['0240735', 'โม ไน วิน', 'မိုးနိုင်ဝင်း', 'Moe Naing Win', 'pullFat'],
-  ['0150620', 'โบ ชน', 'ဘိုချွန်', 'Bo Chun', 'pullFat'],
-  ['0231914', 'มิน คาน จอ', 'မင်းခန့်ကျော်', 'Min Khant Kyaw', 'scrapeBody'],
-  ['0219040', 'อู ทุน ลิน', 'ဦးထွန်းလင်း', 'U Tun Lin', 'putHead', null, 'P'],
-  ['0241037', 'แทด อากา ซอ', 'သက်အာကာစိုး', 'Thet Arkar Soe', 'seal'],
-  ['0150485', 'เมี๊ยะ ชู ชู หวย', 'မြချိုချိုဝေ', 'Mya Cho Cho Wai', 'scrapeHeadNeck'],
-  ['0150593', 'เทียเรส ที', 'ထီရက်စ် သီ', 'Theres Thi', 'gall'],
-  ['0214035', 'ชิน มา เงือน', 'ခင်မာငြိမ်း', 'Khin Mar Nyein', 'turn', null, 'P'],
-  ['0178112', 'หัด หัด วี', 'ထက်ထက်ဝေ', 'Htet Htet Wai', 'weighFat'],
-  ['0180406', 'มายีซานดา', 'မရီစန္ဒာ', 'Ma Yi Sandar', 'scrapeLegNeck', null, 'P'],
-  ['0180401', 'เท เท อู', 'ဌေးဌေးဦး', 'Htay Htay Oo', 'washLarge', null, 'P'],
-  ['0168243', 'มา มา เท', 'မမဌေး', 'Ma Ma Htay', 'strip'],
-  ['0199053', 'ทู ซา เฮียน', 'သူဇာဟိန်း', 'Thu Zar Hein', 'washLarge'],
-  ['0187782', 'จอ มิน ทุน', 'ကျော်မင်းထွန်း', 'Kyaw Min Tun', 'hang'],
-  ['0233511', 'โซ โซ ยืน', 'စိုးစိုးယဉ်', 'Soe Soe Yin', 'turn'],
-  ['0180404', 'ทุน', 'ထွန်း', 'Tun', 'scoopBoiled', null, 'P'],
-  ['0239459', 'เอ ดานดาร์ อู', 'အေးသန္တာဦး', 'Aye Thandar Oo', 'strip'],
-  ['0184425', 'วิน นาทุน', 'ဝင်းနထွန်း', 'Win Na Tun', 'scrapeLegNeck'],
-  ['0229454', 'เพียว โก', 'ဖြိုးကို', 'Phyo Ko', 'boilInt', '06:30-15:30'],
-  ['0108292', 'ปาริณา มาน้อย', 'ပါရိနာ မာနွိုင်', 'Parina Manoi', 'offalSet', '07:30-16:30'],
-  ['0218005', 'เน มิน อ่อง', 'နေမင်းအောင်', 'Nay Min Aung', 'offalSet', '07:30-16:30'],
-  ['0178122', 'เอ เมี๊ยะ ทู', 'အေးမြသူ', 'Aye Mya Thu', 'preg', '08:00-17:00'],
-  ['0183038', 'เบญจวรรณ ยุดดร', 'ဘဉ်ဇဝမ် ယုဒ်ဒွန်', 'Benjawan Yuddon', 'preg', '08:00-17:00', '', 'leave'],
-  ['0184419', 'เอ เทะ นาย', 'အေးသက်နိုင်', 'Aye Thet Naing', 'preg', '08:00-17:00'],
-  ['0178124', 'ยะ มิน ทู', 'ရမင်းသူ', 'Ya Min Thu', 'preg', '08:00-17:00'],
-  ['0214036', 'ดิน มา เท', 'ဒင်မာဌေး', 'Din Mar Htay', 'preg', '08:00-17:00', 'R'],
-  ['0184420', 'มา ชิน มา โซ', 'မခင်မာစိုး', 'Ma Khin Mar Soe', 'preg', '08:00-17:00', 'P'],
-  ['0232957', 'ดาน ชิน อ่อง', 'ဒန်ချင်းအောင်', 'Dan Chin Aung', 'drive', '', '', 'from2'],
-  ['0241891', 'โซ โม อ่อง', 'စိုးမိုးအောင်', 'Soe Moe Aung', 'washLarge', '', '', 'from2'],
-];
-
-const S2 = [
-  ['0077998', 'เครือวัลย์ พงษ์วิริช', 'ခရူဝမ် ဖုန်ဝိရစ်', 'Kruewan Phongwirit', 'lead', '17:00-02:00'],
-  ['0092821', 'เสาวลักษณ์ ทอสา', 'ဆောင်ဝလက် ထော်ဆာ', 'Saowalak Thosa', 'lead', '19:00-04:00'],
-  ['0184413', 'คัน อ่อง โม', 'ခန့်အောင်မိုး', 'Khant Aung Moe', 'recv', '14:00-23:00'],
-  ['0187781', 'ตาล ไน', 'တန်နိုင်', 'Tan Naing', 'recv', '14:00-23:00'],
-  ['0206882', 'ลิน ลิน', 'လင်းလင်း', 'Lin Lin', 'recv', '14:00-23:00'],
-  ['0150612', 'เมียง โซ ไค', 'မြင့်စိုးခိုင်', 'Myint Soe Khaing', 'drive'],
-  ['0237243', 'โก โก้', 'ကိုကို', 'Ko Ko', 'scrapeBody'],
-  ['0182984', 'เสง ปราก', 'ဆင်းပရက်', 'Seng Prak', 'cutHead'],
-  ['0219085', 'ไว โม ทวย', 'ဝေမိုးသွယ်', 'Wai Moe Thwe', 'pierce'],
-  ['0199088', 'โพ โซ', 'ဖိုးစိုး', 'Pho Soe', 'pierce'],
-  ['0238204', 'เย ดีฮา', 'ရဲဒီဟာ', 'Ye Diha', 'pullFat'],
-  ['0182986', 'ทุล แก้ว', 'ထုလ် ကေ့ဝ်', 'Thul Kaew', 'cutHead'],
-  ['0183891', 'เรือน ทอน', 'ရွမ် ထုန်', 'Ruean Thon', 'openWhite'],
-  ['0234928', 'คิน ซัน มู', 'ခင်ဆန်းမူ', 'Khin San Mu', 'strip'],
-  ['0184274', 'ทุน ซิน ละ', 'ထွန်းဇင်လှ', 'Tun Zin Hla', 'split'],
-  ['0198789', 'กอง เทะ ลิน', 'ကောင်းထက်လင်း', 'Kaung Htet Lin', 'openWhite'],
-  ['0178081', 'โจ เย อ่อง', 'ကျော်ရဲအောင်', 'Kyaw Ye Aung', 'split'],
-  ['0217825', 'ฮัน โซ อ่อง', 'ဟန်စိုးအောင်', 'Han Soe Aung', 'pullFat'],
-  ['0239455', 'จี ลิน ดุน', 'ကြည်လင်းထွန်း', 'Kyi Lin Tun', 'pullFat'],
-  ['0239460', 'ไค ตา ซิน', 'ခိုင်တာဇင်', 'Khaing Tar Zin', 'weighWhite'],
-  ['0183539', 'เด๊ะ นาดา จอ', 'ဒေးနန္ဒာကျော်', 'Day Nanda Kyaw', 'liftRed', null, 'P'],
-  ['0199081', 'จา นิว', 'ဂျာညို', 'Ja Nyo', 'turn', null, 'R'],
-  ['0206884', 'ดิน ทุน อู', 'ဒင်ထွန်းဦး', 'Din Tun Oo', 'openRed'],
-  ['0228190', 'ชิด ชิด ซอ', 'ချစ်ချစ်စိုး', 'Chit Chit Soe', 'washStomach'],
-  ['0207349', 'คิน ซัน วิน', 'ခင်ဆန်းဝင်း', 'Khin San Win', 'turn'],
-  ['0150459', 'เอ๊ะ ตอ ชิน อู', 'အေးတော်ခင်ဦး', 'Aye Taw Khin Oo', 'washLarge'],
-  ['0182987', 'ชาไม พุน', 'ချမိုင် ပွန်', 'Chamai Phun', 'tearLarge'],
-  ['0199089', 'วิน โม ซอ', 'ဝင်းမိုးစော', 'Win Moe Saw', 'headCollect'],
-  ['0228876', 'ดินนิลาลวิน', 'ဒင်နီလာလွင်', 'Din Nilar Lwin', 'strip'],
-  ['0182983', 'ลิกา กอย', 'လီကာ ကွိုင်', 'Lika Koy', 'strip'],
-  ['0207340', 'เย มิน เทะ', 'ရဲမင်းထက်', 'Ye Min Htet', 'scrapeNeck'],
-  ['0178117', 'เอ เอ อ่อง', 'အေးအေးအောင်', 'Aye Aye Aung', 'turn'],
-  ['0231915', 'เต็ง ตาน ไท่', 'တင့်သန်းထိုက်', 'Tint Than Htike', 'scrapeHead'],
-  ['0236044', 'โซเอ มาร์ ลวิน', 'စိုးအေးမာလွင်', 'Soe Aye Mar Lwin', 'strip'],
-  ['0236046', 'มอมอ ช่วยชิน', 'မိုးမိုးဆွေစင်', 'Moe Moe Swe Sin', 'turn'],
-  ['0183538', 'เล ซา', 'လဲ့ဇာ', 'Lae Zar', 'gall', null, 'R'],
-  ['0189706', 'กรวิภา ห่วงนาค', 'ကရဝိဘာ ဟွမ်နတ်', 'Korawipa Huangnak', 'washLarge'],
-  ['0238881', 'มาว ซ้วน เอ็น ลิน', 'မောင်ဆွမ်အိန်လင်း', 'Maung Swan Ein Lin', 'liftRed'],
-  ['0207347', 'อ่อง ซาน วิน', 'အောင်ဆန်းဝင်း', 'Aung San Win', 'weighWhiteSeal'],
-  ['0238884', 'พิว พิว ไหล', 'ဖြူဖြူလှိုင်', 'Phyu Phyu Hlaing', 'strip'],
-  ['0150619', 'สาย โพ โลน', 'စိုင်းဖိုးလုံ', 'Sai Pho Lone', 'weight'],
-  ['0081852', 'ตุ๊กตา ชินวัฒนหงษ์', 'တုတ်တာ ချင်ဝတ်ထနဟုန်', 'Tukta Chinwatthanahong', 'strip', '18:00-03:00'],
-  ['0135200', 'พัชรี ลอดสิมมา', 'ဖတ်ချရီ လော့ဆင်မာ', 'Phatcharee Lodsimma', 'packRed', '17:30-02:30'],
-  ['0150450', 'มา ลา โซ', 'မလှစိုး', 'Ma Hla Soe', 'scald', '16:30-01:30'],
-  ['0184276', 'เมา ซอ ทิน', 'မောင်စောတင်', 'Maung Saw Tin', 'boilBlood', '16:30-01:30'],
-  ['0199058', 'เท เท โบ', 'ဌေးဌေးဘို', 'Htay Htay Bo', 'weighRed', '17:00-02:00'],
-  ['0239456', 'โซ เต็ง', 'စိုးတင်', 'Soe Tin', 'scoop', '17:00-02:00'],
-  ['0206895', 'ซอ เจ นัด เซ๊ะ', 'စောဂျေနတ်ဆေ', 'Saw Je Nat Se', 'liftRed', '17:00-02:00'],
-  ['0180403', 'เมย์', 'မေ', 'May', 'washStomach', '', 'P', 'from1'],
-  ['0168285', 'ซอ ลา แว ซี', 'စောလာဝေစီ', 'Saw Lar Wae Si', 'stick', '', '', 'from1'],
-  ['0180407', 'เว เว ลวิน', 'ဝေဝေလွင်', 'Wai Wai Lwin', 'washLarge', '', 'R', 'from1'],
-];
-
-const mk = (shift, def) => (r) => ({
-  id: r[0], th: r[1], mm: r[2], en: r[3], job: r[4],
-  time: r[5] === undefined || r[5] === null ? def : r[5],
-  bus: r[6] || '', note: r[7] || '', shift,
-});
-
 const RULES = {
   mm: 'ကိစ္စခွင့် – ၃ ရက်ကြို၍ အကြောင်းကြားရမည်\nခွင့်စာရေးရာတွင် ခေါင်းဆောင်၏ ခွင့်ပြုချက် ရယူရမည်\nအလုပ်ချိန်ကို ကိုယ်တိုင်ပြောင်းလဲခြင်း ခွင့်မပြုပါ',
   th: 'ลากิจ แจ้งล่วงหน้า 3 วัน\nการเขียนใบลา ต้องได้รับอนุญาตจากหัวหน้า\nเปลี่ยนเวลาทำงานเอง ไม่อนุมัติให้',
   en: 'Personal leave: notify 3 days in advance\nLeave forms must be approved by your supervisor\nChanging your own work hours is not allowed',
 };
 
-const initialWorkers = () => [...S1.map(mk(1, '06:00-15:00')), ...S2.map(mk(2, '16:00-01:00'))];
+/* Worker names are NOT kept in the code (the repo is public).
+   They are imported once from the roster/backup .json file inside the app. */
 const initialData = () => ({
-  workers: initialWorkers(),
-  shiftPhone: '096-2197449',
-  linePhone: '092-0011437',
+  workers: [],
+  shiftPhone: '',
+  linePhone: '',
   rules: { ...RULES },
   pin: '1234',
-  att: {},        // { 'YYYY-MM-DD': { [id]: { s: status, n: note } } }
-  lockAtt: false, // admin-only attendance marking
+  att: {},          // { 'YYYY-MM-DD': { [id]: { s, n, lt, arr, oi, oo } } }
+  lockAtt: false,
+  quota: { sick: 30, personal: 3, annual: 6 },
+  warnAbsent: 3,
+  lastBackup: '',
 });
 
 /* ===================== HELPERS ===================== */
@@ -326,17 +275,60 @@ const pad = (n) => (n < 10 ? '0' + n : '' + n);
 const ymd = (dt) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
 const parse = (iso) => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); };
 const addDays = (iso, n) => { const d = parse(iso); d.setDate(d.getDate() + n); return ymd(d); };
+const addMonths = (ym, n) => { const [y, m] = ym.split('-').map(Number); const d = new Date(y, m - 1 + n, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
+const daysIn = (ym) => { const [y, m] = ym.split('-').map(Number); return new Date(y, m, 0).getDate(); };
 const fmtDate = (iso, l) => {
-  const d = parse(iso);
-  const y = d.getFullYear(), m = d.getMonth(), dd = d.getDate();
+  const d = parse(iso); const y = d.getFullYear(), m = d.getMonth(), dd = d.getDate();
   if (l === 'mm') return `${toMM(dd)} ${MON.mm[m]} ${toMM(y)}`;
   if (l === 'th') return `${dd} ${MON.th[m]} ${y + 543}`;
   return `${dd} ${MON.en[m]} ${y}`;
 };
+const fmtMonth = (ym, l) => {
+  const [y, m] = ym.split('-').map(Number);
+  if (l === 'mm') return `${MON.mm[m - 1]} ${toMM(y)}`;
+  if (l === 'th') return `${MON.th[m - 1]} ${y + 543}`;
+  return `${MON.en[m - 1]} ${y}`;
+};
+const fill = (s, o) => s.replace(/\{(\w+)\}/g, (_, k) => (o[k] !== undefined ? o[k] : ''));
+const toMin = (hm) => { const m = /^(\d{1,2}):(\d{2})$/.exec(hm || ''); return m ? +m[1] * 60 + +m[2] : null; };
+const fromMin = (x) => { const v = ((x % 1440) + 1440) % 1440; return `${pad(Math.floor(v / 60))}:${pad(v % 60)}`; };
+const normTime = (s) => {
+  const v = (s || '').trim(); if (!v) return '';
+  const m = /^(\d{1,2})[:.\s]?(\d{2})$/.exec(v); if (!m) return null;
+  const h = +m[1], mi = +m[2]; if (h > 23 || mi > 59) return null;
+  return `${pad(h)}:${pad(mi)}`;
+};
+const nowHM = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const shiftStart = (w) => (w.time || '').split('-')[0] || '';
+const shiftEnd = (w) => (w.time || '').split('-')[1] || '';
+const lateMins = (w, r) => {
+  if (!r || r.s !== 'late') return 0;
+  const a = toMin(r.arr), s = toMin(shiftStart(w));
+  if (a === null || s === null) return 0;
+  const d = (a - s + 1440) % 1440; return d > 720 ? 0 : d;
+};
+const otMins = (r) => {
+  if (!r) return 0; const a = toMin(r.oi), b = toMin(r.oo);
+  if (a === null || b === null) return 0; return (b - a + 1440) % 1440;
+};
+const hrs = (m) => { const h = Math.round((m / 60) * 10) / 10; return String(h); };
 const nameOf = (w, l) => w[l] || w.en || w.th || w.mm || '-';
 const subName = (w, l) => (l === 'th' ? w.en : w.th);
 const noteColor = (n) => (n === 'new' ? C.green : n === 'leave' ? C.pink : C.cyan);
 const anim = () => LayoutAnimation.configureNext(LayoutAnimation.create(220, 'easeInEaseOut', 'opacity'));
+const csvCell = (v) => { const s = String(v === undefined || v === null ? '' : v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+
+const shareFile = async (name, content, mime) => {
+  try {
+    const uri = FileSystem.cacheDirectory + name;
+    await FileSystem.writeAsStringAsync(uri, content, { encoding: 'utf8' });
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(uri, { mimeType: mime, dialogTitle: name });
+      return true;
+    }
+  } catch (e) {}
+  try { await Share.share({ message: content }); return true; } catch (e) { return false; }
+};
 
 /* ===================== SMALL COMPONENTS ===================== */
 const Chip = ({ label, active, onPress, color = C.amber, icon }) => (
@@ -346,8 +338,9 @@ const Chip = ({ label, active, onPress, color = C.amber, icon }) => (
   </TouchableOpacity>
 );
 
-const Tag = ({ text, color }) => (
+const Tag = ({ text, color, icon }) => (
   <View style={[st.tag, { borderColor: color + '66', backgroundColor: color + '1F' }]}>
+    {icon ? <Ionicons name={icon} size={10} color={color} style={{ marginRight: 3 }} /> : null}
     <Text style={[st.tagTx, { color }]}>{text}</Text>
   </View>
 );
@@ -359,6 +352,13 @@ const Field = ({ label, ...p }) => (
   </View>
 );
 
+const SecTitle = ({ icon, text, color = C.amber }) => (
+  <View style={st.secTitleRow}>
+    <Ionicons name={icon} size={16} color={color} />
+    <Text style={[st.secTitleTx, { color }]}>{text}</Text>
+  </View>
+);
+
 /* ===================== APP ===================== */
 export default function App() {
   const [lang, setLang] = useState('mm');
@@ -367,9 +367,10 @@ export default function App() {
   const [attDate, setAttDate] = useState(ymd(new Date()));
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('all');
-  const [view, setView] = useState('status'); // status | job | list
+  const [view, setView] = useState('status');
   const [detailId, setDetailId] = useState(null);
-  const [noteDraft, setNoteDraft] = useState('');
+  const [dr, setDr] = useState({ n: '', arr: '', oi: '', oo: '' });
+  const [flash, setFlash] = useState(false);
   const [admin, setAdmin] = useState(false);
   const [pinOpen, setPinOpen] = useState(false);
   const [pinIn, setPinIn] = useState('');
@@ -377,6 +378,12 @@ export default function App() {
   const [setOpen, setSetOpen] = useState(false);
   const [sForm, setSForm] = useState(null);
   const [noticeOpen, setNoticeOpen] = useState(false);
+  const [repOpen, setRepOpen] = useState(false);
+  const [repYm, setRepYm] = useState(ymd(new Date()).slice(0, 7));
+  const [repShift, setRepShift] = useState('all');
+  const [busOpen, setBusOpen] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteTx, setPasteTx] = useState('');
 
   const t = T[lang];
   const accent = shift === 1 ? C.amber : C.violet;
@@ -391,7 +398,8 @@ export default function App() {
         if (l) setLang(l);
         if (raw) {
           const p = JSON.parse(raw);
-          setData({ ...initialData(), ...p, att: p.att || {}, lockAtt: !!p.lockAtt });
+          const base = initialData();
+          setData({ ...base, ...p, att: p.att || {}, lockAtt: !!p.lockAtt, quota: { ...base.quota, ...(p.quota || {}) }, workers: p.workers || [] });
         } else setData(initialData());
       } catch (e) {
         setData(initialData());
@@ -403,10 +411,7 @@ export default function App() {
     setData(nd);
     AsyncStorage.setItem(KEY, JSON.stringify(nd)).catch(() => {});
   };
-  const changeLang = (l) => {
-    setLang(l);
-    AsyncStorage.setItem(KEY + '_lang', l).catch(() => {});
-  };
+  const changeLang = (l) => { setLang(l); AsyncStorage.setItem(KEY + '_lang', l).catch(() => {}); };
 
   const day = (data && data.att[attDate]) || {};
   const stOf = (id) => (day[id] ? day[id].s : 'none');
@@ -415,14 +420,23 @@ export default function App() {
 
   const counts = useMemo(() => {
     const c = { present: 0, absent: 0, leave: 0, off: 0, late: 0, none: 0 };
-    shiftWorkers.forEach((w) => { c[day[w.id] ? day[w.id].s : 'none']++; });
+    shiftWorkers.forEach((w) => { const s = day[w.id] ? day[w.id].s : 'none'; c[s] = (c[s] || 0) + 1; });
     return c;
   }, [shiftWorkers, day]);
 
-  const markedOf = (s) => {
-    if (!data) return 0;
-    return data.workers.filter((w) => w.shift === s && day[w.id]).length;
-  };
+  /* absences this month (for warnings) */
+  const absMonth = useMemo(() => {
+    const m = {}; if (!data) return m;
+    const pre = attDate.slice(0, 7);
+    Object.keys(data.att).forEach((d) => {
+      if (!d.startsWith(pre)) return;
+      const dd = data.att[d];
+      Object.keys(dd).forEach((id) => { if (dd[id].s === 'absent') m[id] = (m[id] || 0) + 1; });
+    });
+    return m;
+  }, [data, attDate]);
+  const isWarn = (id) => data && data.warnAbsent > 0 && (absMonth[id] || 0) >= data.warnAbsent;
+  const warnCount = shiftWorkers.filter((w) => isWarn(w.id)).length;
 
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -434,10 +448,11 @@ export default function App() {
         if (filter === 'moved') return w.note === 'from1' || w.note === 'from2';
         if (filter === 'preg') return w.job === 'preg';
         if (filter === 'lead') return w.job === 'lead';
+        if (filter === 'warn') return isWarn(w.id);
         return true;
       })
       .filter((w) => !s || [w.id, w.th, w.mm, w.en].some((x) => (x || '').toLowerCase().includes(s)));
-  }, [shiftWorkers, q, filter, day]);
+  }, [shiftWorkers, q, filter, day, absMonth]);
 
   const sections = useMemo(() => {
     if (view === 'list') return [{ key: 'all', title: null, data: list }];
@@ -446,37 +461,84 @@ export default function App() {
       list.forEach((w) => { if (!map[w.job]) { map[w.job] = []; order.push(w.job); } map[w.job].push(w); });
       return order.map((k) => ({ key: k, title: jobName(k, lang), data: map[k] }));
     }
-    // status view: marked people grouped at the top
     const map = {}; ORDER.forEach((s) => { map[s] = []; });
-    list.forEach((w) => map[day[w.id] ? day[w.id].s : 'none'].push(w));
+    list.forEach((w) => { const s = day[w.id] ? day[w.id].s : 'none'; (map[s] || map.none).push(w); });
     return ORDER.filter((s) => map[s].length).map((s) => ({ key: s, status: s, title: t.sec[s], data: map[s] }));
   }, [list, view, lang, day, t]);
 
-  const c1 = data ? data.workers.filter((w) => w.shift === 1).length : 0;
-  const c2 = data ? data.workers.filter((w) => w.shift === 2).length : 0;
+  /* monthly aggregate for report */
+  const monthAgg = (ym) => {
+    const agg = {};
+    data.workers.forEach((w) => { agg[w.id] = { present: 0, late: 0, absent: 0, leave: 0, off: 0, lateMin: 0, otMin: 0, lt: {}, days: {} }; });
+    Object.keys(data.att).forEach((d) => {
+      if (!d.startsWith(ym)) return;
+      const dd = data.att[d]; const dn = +d.slice(8, 10);
+      Object.keys(dd).forEach((id) => {
+        const a = agg[id]; if (!a) return; const r = dd[id]; const w = data.workers.find((x) => x.id === id);
+        if (a[r.s] !== undefined) a[r.s]++;
+        a.days[dn] = r.s;
+        if (r.s === 'late') a.lateMin += lateMins(w, r);
+        a.otMin += otMins(r);
+        if (r.s === 'leave') { const k = r.lt || 'other'; a.lt[k] = (a.lt[k] || 0) + 1; }
+      });
+    });
+    return agg;
+  };
 
   /* ---------- attendance actions ---------- */
   const canMark = () => {
     if (data.lockAtt && !admin) { Alert.alert('🔒', t.locked); return false; }
     return true;
   };
+  const writeDay = (date, nd) => save({ ...data, att: { ...data.att, [date]: nd } });
 
-  const writeDay = (nd) => save({ ...data, att: { ...data.att, [attDate]: nd } });
-
-  const mark = (id, s) => {
+  const mark = (w, s) => {
     if (!canMark()) return;
     anim();
     const nd = { ...day };
-    if (nd[id] && nd[id].s === s) delete nd[id];
-    else nd[id] = { s, n: nd[id] ? nd[id].n || '' : '' };
-    writeDay(nd);
+    const cur = nd[w.id];
+    if (cur && cur.s === s) delete nd[w.id];
+    else {
+      const r = { ...(cur || {}), s };
+      if (s === 'leave' && !r.lt) r.lt = w.note === 'leave' ? 'maternity' : 'personal';
+      if (s === 'late' && !r.arr && attDate === todayIso) r.arr = nowHM();
+      nd[w.id] = r;
+    }
+    writeDay(attDate, nd);
   };
 
-  const saveNote = (id, n) => {
-    if (!day[id]) return;
+  const patchRec = (w, patch) => {
     if (!canMark()) return;
-    writeDay({ ...day, [id]: { ...day[id], n: n.trim() } });
+    const nd = { ...day };
+    nd[w.id] = { ...(nd[w.id] || { s: 'present' }), ...patch };
+    writeDay(attDate, nd);
   };
+
+  const loadDr = (id, date) => {
+    const r = (data.att[date] && data.att[date][id]) || {};
+    setDr({ n: r.n || '', arr: r.arr || '', oi: r.oi || '', oo: r.oo || '' });
+  };
+
+  const flashSaved = () => { setFlash(true); setTimeout(() => setFlash(false), 1400); };
+
+  const saveDr = (w) => {
+    const arr = normTime(dr.arr), oi = normTime(dr.oi), oo = normTime(dr.oo);
+    if (arr === null || oi === null || oo === null) return Alert.alert(t.badTime);
+    const has = day[w.id];
+    if (!has && !dr.n.trim() && !oi && !oo) return;
+    patchRec(w, { n: dr.n.trim(), arr: arr || '', oi: oi || '', oo: oo || '' });
+    setDr({ n: dr.n.trim(), arr: arr || '', oi: oi || '', oo: oo || '' });
+    flashSaved();
+  };
+
+  const quickOt = (w, h) => {
+    const start = normTime(dr.oi) || shiftEnd(w) || '17:00';
+    const oi = start, oo = fromMin(toMin(start) + h * 60);
+    setDr({ ...dr, oi, oo });
+    patchRec(w, { oi, oo });
+    flashSaved();
+  };
+  const clearOt = (w) => { setDr({ ...dr, oi: '', oo: '' }); if (day[w.id]) patchRec(w, { oi: '', oo: '' }); };
 
   const markAllPresent = () => {
     if (!canMark()) return;
@@ -488,8 +550,8 @@ export default function App() {
         text: t.yes, onPress: () => {
           anim();
           const nd = { ...day };
-          rest.forEach((w) => { nd[w.id] = { s: w.note === 'leave' ? 'leave' : 'present', n: '' }; });
-          writeDay(nd);
+          rest.forEach((w) => { nd[w.id] = w.note === 'leave' ? { s: 'leave', lt: 'maternity' } : { s: 'present' }; });
+          writeDay(attDate, nd);
         },
       },
     ]);
@@ -499,34 +561,128 @@ export default function App() {
     if (!canMark()) return;
     Alert.alert(t.clearDay, t.clearDayQ, [
       { text: t.cancel, style: 'cancel' },
-      {
-        text: t.yes, style: 'destructive', onPress: () => {
-          anim();
-          const nd = { ...day };
-          shiftWorkers.forEach((w) => { delete nd[w.id]; });
-          writeDay(nd);
-        },
-      },
+      { text: t.yes, style: 'destructive', onPress: () => { anim(); const nd = { ...day }; shiftWorkers.forEach((w) => { delete nd[w.id]; }); writeDay(attDate, nd); } },
     ]);
   };
+
+  const EMO = { present: '✅', absent: '❌', leave: '📝', off: '🛌', late: '⏰', none: '⚪' };
 
   const shareReport = () => {
     const sName = shift === 1 ? t.s1 : t.s2;
     let txt = `📋 ${t.title} – ${sName}\n📅 ${t.wd[parse(attDate).getDay()]}, ${fmtDate(attDate, lang)}\n\n`;
-    const emo = { present: '✅', absent: '❌', leave: '📝', off: '🛌', late: '⏰', none: '⚪' };
     txt += `👥 ${t.total}: ${num(shiftWorkers.length)} ${t.ppl}\n`;
-    ORDER.forEach((s) => { if (counts[s]) txt += `${emo[s]} ${t.st[s]}: ${num(counts[s])}\n`; });
+    ORDER.forEach((s) => { if (counts[s]) txt += `${EMO[s]} ${t.st[s]}: ${num(counts[s])}\n`; });
     ['absent', 'leave', 'off', 'late', 'none'].forEach((s) => {
       const ws = shiftWorkers.filter((w) => stOf(w.id) === s);
       if (!ws.length) return;
-      txt += `\n${emo[s]} ${t.sec[s]} (${num(ws.length)})\n`;
+      txt += `\n${EMO[s]} ${t.sec[s]} (${num(ws.length)})\n`;
       ws.forEach((w, i) => {
-        const n = day[w.id] && day[w.id].n ? ` – ${day[w.id].n}` : '';
-        txt += `${num(i + 1)}. ${nameOf(w, lang)} (${w.id}) • ${jobName(w.job, lang)}${n}\n`;
+        const r = day[w.id] || {};
+        let extra = '';
+        if (s === 'leave' && r.lt) extra += ` [${t.lt[r.lt]}]`;
+        if (s === 'late' && r.arr) extra += ` [${r.arr} +${num(lateMins(w, r))}${t.min}]`;
+        if (r.n) extra += ` – ${r.n}`;
+        txt += `${num(i + 1)}. ${nameOf(w, lang)} (${w.id})${extra}\n`;
       });
+    });
+    const otW = shiftWorkers.filter((w) => otMins(day[w.id]) > 0);
+    if (otW.length) {
+      txt += `\n⚡ ${t.ot} (${num(otW.length)})\n`;
+      otW.forEach((w, i) => { const r = day[w.id]; txt += `${num(i + 1)}. ${nameOf(w, lang)} ${r.oi}-${r.oo} = ${num(hrs(otMins(r)))}${t.hrs}\n`; });
+    }
+    txt += `\n— ${t.reportBy}`;
+    Share.share({ message: txt }).catch(() => {});
+  };
+
+  /* ---------- bus ---------- */
+  const busRiders = (b) => shiftWorkers.filter((w) => w.bus === b && !['absent', 'leave', 'off'].includes(stOf(w.id)));
+  const shareBus = () => {
+    let txt = `🚌 ${t.busList} – ${shift === 1 ? t.s1 : t.s2}\n📅 ${fmtDate(attDate, lang)}\n`;
+    ['R', 'P'].forEach((b) => {
+      const ws = busRiders(b);
+      txt += `\n${b === 'R' ? '🟢' : '🔵'} ${b === 'R' ? t.busR : t.busP} – ${num(ws.length)} ${t.ppl}\n`;
+      ws.forEach((w, i) => { txt += `${num(i + 1)}. ${nameOf(w, lang)} (${w.id}) ${shiftStart(w)}\n`; });
+    });
+    Share.share({ message: txt }).catch(() => {});
+  };
+
+  /* ---------- report ---------- */
+  const repWorkers = data ? data.workers.filter((w) => repShift === 'all' || w.shift === repShift) : [];
+  const repAgg = useMemo(() => (data && repOpen ? monthAgg(repYm) : {}), [data, repOpen, repYm]);
+
+  const exportCsv = async () => {
+    const n = daysIn(repYm);
+    const head = ['ID', 'Name (MM)', 'Name (TH)', 'Name (EN)', 'Shift', 'Job', 'Present', 'Late', 'Absent', 'Leave', 'Off',
+      'Sick', 'Personal', 'Annual', 'Maternity', 'Other leave', 'Late minutes', 'OT hours'];
+    for (let d = 1; d <= n; d++) head.push(String(d));
+    const rows = [head];
+    repWorkers.forEach((w) => {
+      const a = repAgg[w.id]; if (!a) return;
+      const r = [w.id, w.mm, w.th, w.en, w.shift, jobName(w.job, 'en'), a.present, a.late, a.absent, a.leave, a.off,
+        a.lt.sick || 0, a.lt.personal || 0, a.lt.annual || 0, a.lt.maternity || 0, a.lt.other || 0, a.lateMin, hrs(a.otMin)];
+      for (let d = 1; d <= n; d++) r.push(a.days[d] ? STATUS[a.days[d]].code : '');
+      rows.push(r);
+    });
+    rows.push([]);
+    rows.push(['P = Present', 'LT = Late', 'A = Absent', 'L = Leave', 'O = Day off']);
+    const csv = '﻿' + rows.map((r) => r.map(csvCell).join(',')).join('\n');
+    await shareFile(`worker-report-${repYm}.csv`, csv, 'text/csv');
+  };
+
+  const shareMonthText = () => {
+    let txt = `📊 ${t.report} – ${fmtMonth(repYm, lang)}\n${repShift === 'all' ? t.shiftAll : repShift === 1 ? t.s1 : t.s2} • ${num(repWorkers.length)} ${t.ppl}\n\n`;
+    const sorted = [...repWorkers].sort((a, b) => (repAgg[b.id].absent - repAgg[a.id].absent) || (repAgg[b.id].leave - repAgg[a.id].leave));
+    sorted.forEach((w, i) => {
+      const a = repAgg[w.id];
+      txt += `${num(i + 1)}. ${nameOf(w, lang)} (${w.id})\n   ✅${num(a.present + a.late)} ❌${num(a.absent)} 📝${num(a.leave)} 🛌${num(a.off)} ⏰${num(a.lateMin)}${t.min} ⚡${num(hrs(a.otMin))}${t.hrs}\n`;
     });
     txt += `\n— ${t.reportBy}`;
     Share.share({ message: txt }).catch(() => {});
+  };
+
+  /* ---------- backup / restore ---------- */
+  const doBackup = async () => {
+    const { pin, ...rest } = data;
+    const payload = { app: 'worker-name-list', v: 2, exportedAt: new Date().toISOString(), data: rest };
+    const ok = await shareFile(`worker-backup-${todayIso}.json`, JSON.stringify(payload), 'application/json');
+    if (ok) save({ ...data, lastBackup: todayIso });
+  };
+
+  const applyImport = (txt) => {
+    let obj;
+    try { obj = JSON.parse(txt); } catch (e) { return Alert.alert(t.badFile); }
+    const d = obj && (obj.data || obj);
+    if (!d || !Array.isArray(d.workers) || d.workers.some((w) => !w || !w.id)) return Alert.alert(t.badFile);
+    const doIt = () => {
+      const base = initialData();
+      const nd = {
+        ...base, ...data, ...d,
+        pin: data.pin,
+        att: d.att ? d.att : data.att,
+        quota: { ...base.quota, ...(data.quota || {}), ...(d.quota || {}) },
+        rules: d.rules || data.rules,
+        workers: d.workers.map((w) => ({ id: String(w.id), th: w.th || '', mm: w.mm || '', en: w.en || '', job: w.job || 'drive', time: w.time || '', bus: w.bus || '', note: w.note || '', shift: w.shift === 2 ? 2 : 1 })),
+      };
+      save(nd); setPasteOpen(false); setPasteTx(''); setSetOpen(false);
+      Alert.alert('✅', `${t.imported} (${num(nd.workers.length)} ${t.ppl})`);
+    };
+    if (!data.workers.length) return doIt();
+    Alert.alert(t.restore, fill(t.importQ, { w: num(d.workers.length), d: num(Object.keys(d.att || {}).length) }), [
+      { text: t.cancel, style: 'cancel' }, { text: t.yes, style: 'destructive', onPress: doIt },
+    ]);
+  };
+
+  const importFromFile = async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, multiple: false });
+      if (!res || res.canceled || res.type === 'cancel') return;
+      const uri = res.assets && res.assets[0] ? res.assets[0].uri : res.uri;
+      if (!uri) return;
+      const txt = await FileSystem.readAsStringAsync(uri, { encoding: 'utf8' });
+      applyImport(txt);
+    } catch (e) {
+      Alert.alert(t.badFile, String(e && e.message ? e.message : e));
+    }
   };
 
   /* ---------- admin actions ---------- */
@@ -535,10 +691,7 @@ export default function App() {
     else Alert.alert(t.pinWrong);
   };
 
-  const openDetail = (w) => {
-    setNoteDraft(day[w.id] ? day[w.id].n || '' : '');
-    setDetailId(w.id);
-  };
+  const openDetail = (w) => { loadDr(w.id, attDate); setDetailId(w.id); };
 
   const openEdit = (w) => {
     setDetailId(null);
@@ -551,8 +704,7 @@ export default function App() {
   const saveForm = () => {
     const f = form;
     if (!f.id.trim() || !(f.th.trim() || f.mm.trim() || f.en.trim())) return Alert.alert(t.required);
-    const clash = data.workers.find((w) => w.id === f.id.trim() && w.id !== f._orig);
-    if (clash) return Alert.alert(t.idExists);
+    if (data.workers.find((w) => w.id === f.id.trim() && w.id !== f._orig)) return Alert.alert(t.idExists);
     const clean = { id: f.id.trim(), th: f.th.trim(), mm: f.mm.trim(), en: f.en.trim(), job: f.job, time: f.time.trim(), bus: f.bus, note: f.note, shift: f.shift };
     const workers = f._orig ? data.workers.map((w) => (w.id === f._orig ? clean : w)) : [...data.workers, clean];
     save({ ...data, workers });
@@ -573,20 +725,22 @@ export default function App() {
   };
 
   const openSettings = () => {
-    setSForm({ shiftPhone: data.shiftPhone, linePhone: data.linePhone, rules: { ...data.rules }, pin: '', lockAtt: data.lockAtt });
+    setSForm({
+      shiftPhone: data.shiftPhone, linePhone: data.linePhone, rules: { ...data.rules }, pin: '', lockAtt: data.lockAtt,
+      qs: String(data.quota.sick), qp: String(data.quota.personal), qa: String(data.quota.annual), wa: String(data.warnAbsent),
+    });
     setSetOpen(true);
   };
   const saveSettings = () => {
     const s = sForm;
-    save({ ...data, shiftPhone: s.shiftPhone.trim(), linePhone: s.linePhone.trim(), rules: s.rules, lockAtt: s.lockAtt, pin: s.pin.trim() ? s.pin.trim() : data.pin });
+    const n = (v, d) => { const x = parseInt(v, 10); return isNaN(x) || x < 0 ? d : x; };
+    save({
+      ...data, shiftPhone: s.shiftPhone.trim(), linePhone: s.linePhone.trim(), rules: s.rules, lockAtt: s.lockAtt,
+      pin: s.pin.trim() ? s.pin.trim() : data.pin,
+      quota: { sick: n(s.qs, 30), personal: n(s.qp, 3), annual: n(s.qa, 6) }, warnAbsent: n(s.wa, 3),
+    });
     setSetOpen(false);
     Alert.alert(t.saved);
-  };
-  const resetWorkers = () => {
-    Alert.alert(t.reset, t.resetQ, [
-      { text: t.cancel, style: 'cancel' },
-      { text: t.yes, style: 'destructive', onPress: () => { save({ ...data, workers: initialWorkers() }); setSetOpen(false); } },
-    ]);
   };
   const clearAllAtt = () => {
     Alert.alert(t.clearAll, t.clearAllQ, [
@@ -595,7 +749,7 @@ export default function App() {
     ]);
   };
 
-  const call = (p) => Linking.openURL('tel:' + p.replace(/[^0-9+]/g, '')).catch(() => {});
+  const call = (p) => { if (p) Linking.openURL('tel:' + p.replace(/[^0-9+]/g, '')).catch(() => {}); };
 
   if (!data) {
     return (
@@ -608,15 +762,25 @@ export default function App() {
   const noteLabel = (n) => (n === 'leave' ? t.leaveM : t[n] || '');
   const busLabel = (b) => (b === 'R' ? t.busR : b === 'P' ? t.busP : t.noBus);
   const detail = detailId ? data.workers.find((w) => w.id === detailId) : null;
-  const shiftMarked = counts.present + counts.absent + counts.leave + counts.off + counts.late;
+  const shiftMarked = shiftWorkers.length - counts.none;
   const pct = shiftWorkers.length ? shiftMarked / shiftWorkers.length : 0;
+  const hasWorkers = data.workers.length > 0;
+  const hasAtt = Object.keys(data.att).length > 0;
+  const backupAge = data.lastBackup ? Math.round((parse(todayIso) - parse(data.lastBackup)) / 86400000) : null;
+  const needBackup = hasWorkers && hasAtt && (backupAge === null || backupAge >= 7);
+  const markedOf = (s) => data.workers.filter((w) => w.shift === s && day[w.id]).length;
+  const c1 = data.workers.filter((w) => w.shift === 1).length;
+  const c2 = data.workers.filter((w) => w.shift === 2).length;
 
   /* ---------- row ---------- */
   const renderItem = ({ item: w, index }) => {
     const s = stOf(w.id);
     const S = STATUS[s];
-    const rec = day[w.id];
+    const r = day[w.id];
     const barColor = s !== 'none' ? S.color : w.job === 'lead' ? C.pink : accent;
+    const lm = lateMins(w, r);
+    const om = otMins(r);
+    const warn = isWarn(w.id);
     return (
       <View style={[st.row, s !== 'none' && { borderColor: S.color + '55', backgroundColor: S.color + '0D' }]}>
         <View style={[st.rowBar, { backgroundColor: barColor }]} />
@@ -630,29 +794,35 @@ export default function App() {
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={st.name} numberOfLines={1}>{nameOf(w, lang)}</Text>
               {w.job === 'lead' && <Ionicons name="star" size={13} color={C.pink} style={{ marginLeft: 6 }} />}
+              {warn && <Ionicons name="warning" size={14} color={C.yellow} style={{ marginLeft: 6 }} />}
             </View>
             <Text style={st.subName} numberOfLines={1}>{subName(w, lang)} • {w.id}</Text>
             <View style={st.rowTags}>
               <Tag text={jobName(w.job, lang)} color={accent} />
               {w.bus ? <Tag text={busLabel(w.bus)} color={w.bus === 'R' ? C.green : C.cyan} /> : null}
               {w.note ? <Tag text={noteLabel(w.note)} color={noteColor(w.note)} /> : null}
+              {warn ? <Tag icon="warning" text={fill(t.warnTx, { n: num(absMonth[w.id]) })} color={C.yellow} /> : null}
             </View>
-            {rec && rec.n ? (
-              <Text style={[st.rowNote, { color: S.color }]} numberOfLines={1}>📝 {rec.n}</Text>
+            {(r && (r.lt && s === 'leave' || lm > 0 || (s === 'late' && r.arr) || om > 0 || r.n)) ? (
+              <View style={st.infoRow}>
+                {s === 'leave' && r.lt ? <Tag icon={LT_ICON[r.lt]} text={t.lt[r.lt]} color={S.color} /> : null}
+                {s === 'late' && r.arr ? <Tag icon="alarm" text={`${r.arr} • +${num(lm)} ${t.min}`} color={S.color} /> : null}
+                {om > 0 ? <Tag icon="flash" text={`${t.ot} ${num(hrs(om))} ${t.hrs}`} color={C.yellow} /> : null}
+                {r.n ? <Text style={[st.rowNote, { color: S.color }]} numberOfLines={1}>📝 {r.n}</Text> : null}
+              </View>
             ) : null}
           </View>
           <View style={st.timeBox}>
             <Ionicons name="time-outline" size={13} color={C.muted} />
-            <Text style={st.timeTx}>{w.time ? w.time.split('-')[0] : '—'}</Text>
-            <Text style={st.timeTx2}>{w.time ? w.time.split('-')[1] : ''}</Text>
+            <Text style={st.timeTx}>{shiftStart(w) || '—'}</Text>
+            <Text style={st.timeTx2}>{shiftEnd(w)}</Text>
           </View>
         </TouchableOpacity>
         <View style={st.seg}>
           {SEG.map((k) => {
-            const on = s === k;
-            const K = STATUS[k];
+            const on = s === k; const K = STATUS[k];
             return (
-              <TouchableOpacity key={k} activeOpacity={0.7} onPress={() => mark(w.id, k)}
+              <TouchableOpacity key={k} activeOpacity={0.7} onPress={() => mark(w, k)}
                 style={[st.segBtn, { borderColor: K.color + '44' }, on && { backgroundColor: K.color, borderColor: K.color }]}>
                 <Ionicons name={K.icon} size={13} color={on ? '#0A0A12' : K.color} />
                 <Text style={[st.segTx, { color: on ? '#0A0A12' : C.muted }, on && { fontWeight: '900' }]} numberOfLines={1}>{t.short[k]}</Text>
@@ -673,6 +843,11 @@ export default function App() {
           <Text style={st.title}>{t.title}</Text>
           <Text style={st.sub} numberOfLines={1}>{t.sub}</Text>
         </View>
+        {hasWorkers && (
+          <TouchableOpacity onPress={() => { setRepYm(attDate.slice(0, 7)); setRepShift(shift); setRepOpen(true); }} style={[st.iconBtn, { marginRight: 8 }]}>
+            <Ionicons name="bar-chart" size={19} color={C.cyan} />
+          </TouchableOpacity>
+        )}
         <TouchableOpacity onPress={() => (admin ? openSettings() : setPinOpen(true))} style={[st.iconBtn, admin && { borderColor: C.amber }]}>
           <Ionicons name={admin ? 'settings' : 'shield-checkmark-outline'} size={20} color={admin ? C.amber : C.text} />
         </TouchableOpacity>
@@ -694,94 +869,106 @@ export default function App() {
         </View>
       )}
 
-      {/* date navigator */}
-      <View style={st.dateBar}>
-        <TouchableOpacity onPress={() => setAttDate(addDays(attDate, -1))} style={st.dateArrow}>
-          <Ionicons name="chevron-back" size={22} color={C.text} />
-        </TouchableOpacity>
-        <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={() => setAttDate(todayIso)}>
-          <Text style={st.dateWd}>{t.wd[parse(attDate).getDay()]}{isToday ? ` • ${t.today}` : ''}</Text>
-          <Text style={st.dateBig}>{fmtDate(attDate, lang)}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => setAttDate(addDays(attDate, 1))} style={st.dateArrow}>
-          <Ionicons name="chevron-forward" size={22} color={C.text} />
-        </TouchableOpacity>
-      </View>
-      {!isToday && (
-        <TouchableOpacity onPress={() => setAttDate(todayIso)} style={st.todayBtn}>
-          <Ionicons name="today" size={14} color="#0A0A12" />
-          <Text style={st.todayTx}>{t.today}</Text>
+      {needBackup && (
+        <TouchableOpacity onPress={doBackup} style={st.remind}>
+          <Ionicons name="cloud-upload" size={18} color="#0A0A12" />
+          <Text style={st.remindTx}>{t.backupRemind}</Text>
         </TouchableOpacity>
       )}
 
-      {/* shift cards */}
-      <View style={st.shiftRow}>
-        {[1, 2].map((s) => {
-          const on = shift === s;
-          const col = s === 1 ? C.amber : C.violet;
-          const tot = s === 1 ? c1 : c2;
-          const mk2 = markedOf(s);
-          return (
-            <TouchableOpacity key={s} activeOpacity={0.85} onPress={() => { anim(); setShift(s); setFilter('all'); }}
-              style={[st.shiftCard, on && { backgroundColor: col, borderColor: col }]}>
-              <View style={st.shiftHead}>
-                <Ionicons name={s === 1 ? 'sunny' : 'moon'} size={22} color={on ? '#0A0A12' : col} />
-                <Text style={[st.shiftBig, { color: on ? '#0A0A12' : C.text }]}>{num(tot)}</Text>
-              </View>
-              <Text style={[st.shiftName, { color: on ? '#0A0A12' : C.text }]}>{s === 1 ? t.s1 : t.s2}</Text>
-              <Text style={[st.shiftSub, { color: on ? '#0A0A12AA' : C.muted }]}>{s === 1 ? t.day : t.night}</Text>
-              <View style={[st.miniTrack, { backgroundColor: on ? '#0A0A1233' : C.line }]}>
-                <View style={[st.miniFill, { width: `${tot ? (mk2 / tot) * 100 : 0}%`, backgroundColor: on ? '#0A0A12' : col }]} />
-              </View>
-              <Text style={[st.shiftSub, { color: on ? '#0A0A12AA' : C.muted }]}>{num(mk2)}/{num(tot)} {t.marked}</Text>
+      {hasWorkers && (
+        <View>
+          <View style={st.dateBar}>
+            <TouchableOpacity onPress={() => setAttDate(addDays(attDate, -1))} style={st.dateArrow}>
+              <Ionicons name="chevron-back" size={22} color={C.text} />
             </TouchableOpacity>
-          );
-        })}
-      </View>
+            <TouchableOpacity style={{ flex: 1, alignItems: 'center' }} onPress={() => setAttDate(todayIso)}>
+              <Text style={st.dateWd}>{t.wd[parse(attDate).getDay()]}{isToday ? ` • ${t.today}` : ''}</Text>
+              <Text style={st.dateBig}>{fmtDate(attDate, lang)}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setAttDate(addDays(attDate, 1))} style={st.dateArrow}>
+              <Ionicons name="chevron-forward" size={22} color={C.text} />
+            </TouchableOpacity>
+          </View>
+          {!isToday && (
+            <TouchableOpacity onPress={() => setAttDate(todayIso)} style={st.todayBtn}>
+              <Ionicons name="today" size={14} color="#0A0A12" />
+              <Text style={st.todayTx}>{t.today}</Text>
+            </TouchableOpacity>
+          )}
 
-      {/* attendance dashboard */}
-      <View style={st.attCard}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-          <Ionicons name="pulse" size={18} color={accent} />
-          <Text style={st.attTitle}>{t.attTitle}</Text>
-          <Text style={[st.attPct, { color: accent }]}>{num(Math.round(pct * 100))}%</Text>
-        </View>
-        <View style={st.track}>
-          {['present', 'late', 'leave', 'off', 'absent'].map((s) =>
-            counts[s] ? <View key={s} style={{ flex: counts[s], backgroundColor: STATUS[s].color }} /> : null)}
-          {counts.none ? <View style={{ flex: counts.none, backgroundColor: C.line }} /> : null}
-        </View>
-        <View style={st.tiles}>
-          {['present', 'absent', 'leave', 'off', 'late', 'none'].map((s) => {
-            const on = filter === 'st_' + s;
-            const col = STATUS[s].color;
-            return (
-              <TouchableOpacity key={s} activeOpacity={0.8} onPress={() => { anim(); setFilter(on ? 'all' : 'st_' + s); }}
-                style={[st.tile, { borderColor: col + '55' }, on && { backgroundColor: col, borderColor: col }]}>
-                <Ionicons name={STATUS[s].icon} size={16} color={on ? '#0A0A12' : col} />
-                <Text style={[st.tileN, { color: on ? '#0A0A12' : col }]}>{num(counts[s])}</Text>
-                <Text style={[st.tileL, on && { color: '#0A0A12' }]} numberOfLines={1}>{t.st[s]}</Text>
+          <View style={st.shiftRow}>
+            {[1, 2].map((s) => {
+              const on = shift === s; const col = s === 1 ? C.amber : C.violet;
+              const tot = s === 1 ? c1 : c2; const mk2 = markedOf(s);
+              return (
+                <TouchableOpacity key={s} activeOpacity={0.85} onPress={() => { anim(); setShift(s); setFilter('all'); }}
+                  style={[st.shiftCard, on && { backgroundColor: col, borderColor: col }]}>
+                  <View style={st.shiftHead}>
+                    <Ionicons name={s === 1 ? 'sunny' : 'moon'} size={22} color={on ? '#0A0A12' : col} />
+                    <Text style={[st.shiftBig, { color: on ? '#0A0A12' : C.text }]}>{num(tot)}</Text>
+                  </View>
+                  <Text style={[st.shiftName, { color: on ? '#0A0A12' : C.text }]}>{s === 1 ? t.s1 : t.s2}</Text>
+                  <Text style={[st.shiftSub, { color: on ? '#0A0A12AA' : C.muted }]}>{s === 1 ? t.day : t.night}</Text>
+                  <View style={[st.miniTrack, { backgroundColor: on ? '#0A0A1233' : C.line }]}>
+                    <View style={[st.miniFill, { width: `${tot ? (mk2 / tot) * 100 : 0}%`, backgroundColor: on ? '#0A0A12' : col }]} />
+                  </View>
+                  <Text style={[st.shiftSub, { color: on ? '#0A0A12AA' : C.muted }]}>{num(mk2)}/{num(tot)} {t.marked}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={st.attCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+              <Ionicons name="pulse" size={18} color={accent} />
+              <Text style={st.attTitle}>{t.attTitle}</Text>
+              <Text style={[st.attPct, { color: accent }]}>{num(Math.round(pct * 100))}%</Text>
+            </View>
+            <View style={st.track}>
+              {['present', 'late', 'leave', 'off', 'absent'].map((s) =>
+                counts[s] ? <View key={s} style={{ flex: counts[s], backgroundColor: STATUS[s].color }} /> : null)}
+              {counts.none ? <View style={{ flex: counts.none, backgroundColor: C.line }} /> : null}
+            </View>
+            <View style={st.tiles}>
+              {['present', 'absent', 'leave', 'off', 'late', 'none'].map((s) => {
+                const on = filter === 'st_' + s; const col = STATUS[s].color;
+                return (
+                  <TouchableOpacity key={s} activeOpacity={0.8} onPress={() => { anim(); setFilter(on ? 'all' : 'st_' + s); }}
+                    style={[st.tile, { borderColor: col + '55' }, on && { backgroundColor: col, borderColor: col }]}>
+                    <Ionicons name={STATUS[s].icon} size={16} color={on ? '#0A0A12' : col} />
+                    <Text style={[st.tileN, { color: on ? '#0A0A12' : col }]}>{num(counts[s])}</Text>
+                    <Text style={[st.tileL, on && { color: '#0A0A12' }]} numberOfLines={1}>{t.st[s]}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <View style={st.actRow}>
+              <TouchableOpacity onPress={markAllPresent} style={[st.actBtn, { backgroundColor: C.green, flex: 1.6 }]}>
+                <Ionicons name="checkmark-done" size={16} color="#0A0A12" />
+                <Text style={st.actTx} numberOfLines={1}>{t.allPresent}</Text>
               </TouchableOpacity>
-            );
-          })}
+              <TouchableOpacity onPress={shareReport} style={[st.actBtn, { backgroundColor: C.cyan }]}>
+                <Ionicons name="share-social" size={16} color="#0A0A12" />
+                <Text style={st.actTx} numberOfLines={1}>{t.share}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={clearDay} style={[st.actBtn, { backgroundColor: C.card2, borderWidth: 1, borderColor: C.red + '88' }]}>
+                <Ionicons name="refresh" size={16} color={C.red} />
+                <Text style={[st.actTx, { color: C.red }]} numberOfLines={1}>{t.clearDay}</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity onPress={() => setBusOpen(true)} style={st.busStrip}>
+              <Ionicons name="bus" size={18} color={C.green} />
+              <Text style={st.busStripTx} numberOfLines={1}>
+                {t.busR} <Text style={{ color: C.green, fontWeight: '900' }}>{num(busRiders('R').length)}</Text>
+                {'   '}{t.busP} <Text style={{ color: C.cyan, fontWeight: '900' }}>{num(busRiders('P').length)}</Text>
+              </Text>
+              <Ionicons name="chevron-forward" size={16} color={C.muted} />
+            </TouchableOpacity>
+          </View>
         </View>
-        <View style={st.actRow}>
-          <TouchableOpacity onPress={markAllPresent} style={[st.actBtn, { backgroundColor: C.green, flex: 1.6 }]}>
-            <Ionicons name="checkmark-done" size={16} color="#0A0A12" />
-            <Text style={st.actTx} numberOfLines={1}>{t.allPresent}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={shareReport} style={[st.actBtn, { backgroundColor: C.cyan }]}>
-            <Ionicons name="share-social" size={16} color="#0A0A12" />
-            <Text style={st.actTx} numberOfLines={1}>{t.share}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={clearDay} style={[st.actBtn, { backgroundColor: C.card2, borderWidth: 1, borderColor: C.red + '88' }]}>
-            <Ionicons name="refresh" size={16} color={C.red} />
-            <Text style={[st.actTx, { color: C.red }]} numberOfLines={1}>{t.clearDay}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      )}
 
-      {/* notice */}
       <TouchableOpacity onPress={() => { anim(); setNoticeOpen(!noticeOpen); }} style={st.notice}>
         <Ionicons name="megaphone-outline" size={18} color={C.amber} />
         <Text style={st.noticeT}>{t.notice}</Text>
@@ -800,67 +987,96 @@ export default function App() {
               <Ionicons name="call" size={16} color="#0A0A12" />
               <View style={{ marginLeft: 6, flex: 1 }}>
                 <Text style={st.callL} numberOfLines={1}>{t.callShift}</Text>
-                <Text style={st.callN}>{data.shiftPhone}</Text>
+                <Text style={st.callN}>{data.shiftPhone || '—'}</Text>
               </View>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => call(data.linePhone)} style={[st.callBtn, { backgroundColor: C.violet }]}>
               <Ionicons name="call" size={16} color="#0A0A12" />
               <View style={{ marginLeft: 6, flex: 1 }}>
                 <Text style={st.callL} numberOfLines={1}>{t.callLine}</Text>
-                <Text style={st.callN}>{data.linePhone}</Text>
+                <Text style={st.callN}>{data.linePhone || '—'}</Text>
               </View>
             </TouchableOpacity>
           </View>
         </View>
       )}
 
-      {/* search */}
-      <View style={st.searchBox}>
-        <Ionicons name="search" size={18} color={C.muted} />
-        <TextInput value={q} onChangeText={setQ} placeholder={t.search} placeholderTextColor={C.muted} style={st.searchIn} />
-        {q ? <TouchableOpacity onPress={() => setQ('')}><Ionicons name="close-circle" size={18} color={C.muted} /></TouchableOpacity> : null}
-      </View>
-
-      {/* view + filters */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }} contentContainerStyle={{ paddingHorizontal: 16 }}>
-        <Chip label={t.vStatus} icon="pulse" active={view === 'status'} color={C.pink} onPress={() => { anim(); setView('status'); }} />
-        <Chip label={t.vJob} icon="layers" active={view === 'job'} color={C.pink} onPress={() => { anim(); setView('job'); }} />
-        <Chip label={t.vList} icon="list" active={view === 'list'} color={C.pink} onPress={() => { anim(); setView('list'); }} />
-      </ScrollView>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6 }} contentContainerStyle={{ paddingHorizontal: 16 }}>
-        <Chip label={t.all} active={filter === 'all'} color={accent} onPress={() => setFilter('all')} />
-        <Chip label={t.lead} icon="star" active={filter === 'lead'} color={accent} onPress={() => setFilter('lead')} />
-        <Chip label={t.busR} icon="bus" active={filter === 'R'} color={accent} onPress={() => setFilter('R')} />
-        <Chip label={t.busP} icon="boat" active={filter === 'P'} color={accent} onPress={() => setFilter('P')} />
-        <Chip label={t.moved} icon="swap-horizontal" active={filter === 'moved'} color={accent} onPress={() => setFilter('moved')} />
-        <Chip label={t.preg} icon="heart" active={filter === 'preg'} color={accent} onPress={() => setFilter('preg')} />
-      </ScrollView>
-      <Text style={st.hint}>{num(list.length)} {t.ppl} • {t.tapHint}</Text>
+      {hasWorkers && (
+        <View>
+          <View style={st.searchBox}>
+            <Ionicons name="search" size={18} color={C.muted} />
+            <TextInput value={q} onChangeText={setQ} placeholder={t.search} placeholderTextColor={C.muted} style={st.searchIn} />
+            {q ? <TouchableOpacity onPress={() => setQ('')}><Ionicons name="close-circle" size={18} color={C.muted} /></TouchableOpacity> : null}
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }} contentContainerStyle={{ paddingHorizontal: 16 }}>
+            <Chip label={t.vStatus} icon="pulse" active={view === 'status'} color={C.pink} onPress={() => { anim(); setView('status'); }} />
+            <Chip label={t.vJob} icon="layers" active={view === 'job'} color={C.pink} onPress={() => { anim(); setView('job'); }} />
+            <Chip label={t.vList} icon="list" active={view === 'list'} color={C.pink} onPress={() => { anim(); setView('list'); }} />
+          </ScrollView>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6 }} contentContainerStyle={{ paddingHorizontal: 16 }}>
+            <Chip label={t.all} active={filter === 'all'} color={accent} onPress={() => setFilter('all')} />
+            {warnCount > 0 && <Chip label={`${t.warn} ${num(warnCount)}`} icon="warning" active={filter === 'warn'} color={C.yellow} onPress={() => setFilter(filter === 'warn' ? 'all' : 'warn')} />}
+            <Chip label={t.lead} icon="star" active={filter === 'lead'} color={accent} onPress={() => setFilter('lead')} />
+            <Chip label={t.busR} icon="bus" active={filter === 'R'} color={accent} onPress={() => setFilter('R')} />
+            <Chip label={t.busP} icon="boat" active={filter === 'P'} color={accent} onPress={() => setFilter('P')} />
+            <Chip label={t.moved} icon="swap-horizontal" active={filter === 'moved'} color={accent} onPress={() => setFilter('moved')} />
+            <Chip label={t.preg} icon="heart" active={filter === 'preg'} color={accent} onPress={() => setFilter('preg')} />
+          </ScrollView>
+          <Text style={st.hint}>{num(list.length)} {t.ppl} • {t.tapHint}</Text>
+        </View>
+      )}
     </View>
   );
 
-  /* ---------- detail stats ---------- */
-  let monthStats = null; let week = [];
+  const Welcome = (
+    <View style={st.welcome}>
+      <View style={st.welcomeIcon}><Ionicons name="people" size={40} color="#0A0A12" /></View>
+      <Text style={st.welcomeT}>{t.welcome}</Text>
+      <Text style={st.welcomeS}>{t.welcomeSub}</Text>
+      <TouchableOpacity onPress={importFromFile} style={[st.bigBtn, { backgroundColor: C.amber, alignSelf: 'stretch' }]}>
+        <Ionicons name="document-attach" size={18} color="#0A0A12" /><Text style={st.bigBtnTx}>{t.importFile}</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => setPasteOpen(true)} style={[st.bigBtn, { backgroundColor: C.violet, alignSelf: 'stretch' }]}>
+        <Ionicons name="clipboard" size={18} color="#0A0A12" /><Text style={st.bigBtnTx}>{t.paste}</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => (admin ? openEdit(null) : setPinOpen(true))} style={[st.bigBtn, { backgroundColor: C.card2, alignSelf: 'stretch' }]}>
+        <Ionicons name="person-add" size={18} color={C.text} /><Text style={[st.bigBtnTx, { color: C.text }]}>{admin ? t.add : t.emptyAdmin}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  /* ---------- detail data ---------- */
+  let monthStats = null; let cal = []; let yearLeave = {}; let dRec = null; let monthOt = 0; let monthLate = 0;
   if (detail) {
+    dRec = day[detail.id] || null;
     monthStats = { present: 0, absent: 0, leave: 0, off: 0, late: 0 };
-    const pre = attDate.slice(0, 7);
+    const pre = attDate.slice(0, 7); const yr = attDate.slice(0, 4);
     Object.keys(data.att).forEach((d) => {
-      if (d.startsWith(pre) && data.att[d][detail.id]) monthStats[data.att[d][detail.id].s]++;
+      const r = data.att[d][detail.id]; if (!r) return;
+      if (d.startsWith(pre)) {
+        if (monthStats[r.s] !== undefined) monthStats[r.s]++;
+        monthOt += otMins(r); monthLate += lateMins(detail, r);
+      }
+      if (d.startsWith(yr) && r.s === 'leave') { const k = r.lt || 'other'; yearLeave[k] = (yearLeave[k] || 0) + 1; }
     });
-    for (let i = 6; i >= 0; i--) {
-      const d = addDays(attDate, -i);
-      const r = data.att[d] && data.att[d][detail.id];
-      week.push({ d, s: r ? r.s : 'none' });
+    const first = new Date(+pre.slice(0, 4), +pre.slice(5, 7) - 1, 1).getDay();
+    for (let i = 0; i < first; i++) cal.push(null);
+    for (let d = 1; d <= daysIn(pre); d++) {
+      const iso = `${pre}-${pad(d)}`; const r = data.att[iso] && data.att[iso][detail.id];
+      cal.push({ iso, d, s: r ? r.s : 'none' });
     }
   }
-  const dStatus = detail ? stOf(detail.id) : 'none';
+  const dStatus = dRec ? dRec.s : 'none';
+  const dColor = detail ? (dStatus !== 'none' ? STATUS[dStatus].color : detail.shift === 1 ? C.amber : C.violet) : C.amber;
+  const drOt = (() => { const a = toMin(normTime(dr.oi) || ''), b = toMin(normTime(dr.oo) || ''); return a === null || b === null ? 0 : (b - a + 1440) % 1440; })();
+  const drLate = detail ? lateMins(detail, { s: 'late', arr: normTime(dr.arr) || '' }) : 0;
 
   /* ===================== RENDER ===================== */
   return (
     <SafeAreaView style={st.root}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
       <SectionList
-        sections={sections}
+        sections={hasWorkers ? sections : []}
         keyExtractor={(w) => w.id}
         renderItem={renderItem}
         ListHeaderComponent={Header}
@@ -874,18 +1090,16 @@ export default function App() {
                 ? <Ionicons name={STATUS[section.status].icon} size={18} color={col} style={{ marginRight: 8 }} />
                 : <View style={[st.secDot, { backgroundColor: col }]} />}
               <Text style={[st.secTx, section.status && { color: col }]}>{section.title}</Text>
-              <View style={[st.secBadge, { backgroundColor: col }]}>
-                <Text style={st.secN}>{num(section.data.length)}</Text>
-              </View>
+              <View style={[st.secBadge, { backgroundColor: col }]}><Text style={st.secN}>{num(section.data.length)}</Text></View>
             </View>
           );
         }}
-        ListEmptyComponent={
+        ListEmptyComponent={hasWorkers ? (
           <View style={{ alignItems: 'center', padding: 40 }}>
             <Ionicons name="search-outline" size={40} color={C.muted} />
             <Text style={{ color: C.muted, marginTop: 8 }}>{t.empty}</Text>
           </View>
-        }
+        ) : Welcome}
         contentContainerStyle={{ paddingBottom: 110, paddingTop: Platform.OS === 'android' ? 28 : 0 }}
         keyboardShouldPersistTaps="handled"
       />
@@ -902,20 +1116,30 @@ export default function App() {
           {detail && (
             <View style={st.sheet}>
               <View style={st.grab} />
-              <ScrollView style={{ maxHeight: 560 }} keyboardShouldPersistTaps="handled">
-                <View style={[st.bigAvatar, { borderColor: dStatus !== 'none' ? STATUS[dStatus].color : detail.shift === 1 ? C.amber : C.violet }]}>
-                  <Ionicons name={dStatus !== 'none' ? STATUS[dStatus].icon : detail.job === 'lead' ? 'star' : 'person'} size={34}
-                    color={dStatus !== 'none' ? STATUS[dStatus].color : detail.shift === 1 ? C.amber : C.violet} />
+              <ScrollView style={{ maxHeight: 620 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                <View style={[st.bigAvatar, { borderColor: dColor }]}>
+                  <Ionicons name={dStatus !== 'none' ? STATUS[dStatus].icon : detail.job === 'lead' ? 'star' : 'person'} size={34} color={dColor} />
                 </View>
                 <Text style={st.dName}>{nameOf(detail, lang)}</Text>
-                <Text style={st.dId}>ID {detail.id} • {fmtDate(attDate, lang)}</Text>
+                <Text style={st.dId}>ID {detail.id} • {jobName(detail.job, lang)}</Text>
+                <View style={st.dDate}>
+                  <TouchableOpacity onPress={() => { const d = addDays(attDate, -1); setAttDate(d); loadDr(detail.id, d); }}><Ionicons name="chevron-back" size={18} color={C.text} /></TouchableOpacity>
+                  <Text style={st.dDateTx}>{t.wd[parse(attDate).getDay()]}, {fmtDate(attDate, lang)}</Text>
+                  <TouchableOpacity onPress={() => { const d = addDays(attDate, 1); setAttDate(d); loadDr(detail.id, d); }}><Ionicons name="chevron-forward" size={18} color={C.text} /></TouchableOpacity>
+                </View>
+                {isWarn(detail.id) && (
+                  <View style={st.warnBox}>
+                    <Ionicons name="warning" size={16} color="#0A0A12" />
+                    <Text style={st.warnBoxTx}>{fill(t.warnTx, { n: num(absMonth[detail.id]) })}</Text>
+                  </View>
+                )}
 
-                <Text style={st.dSec}>{t.status}</Text>
+                <SecTitle icon="pulse" text={t.status} />
                 <View style={st.bigSeg}>
                   {SEG.map((k) => {
                     const on = dStatus === k; const K = STATUS[k];
                     return (
-                      <TouchableOpacity key={k} onPress={() => mark(detail.id, k)}
+                      <TouchableOpacity key={k} onPress={() => { mark(detail, k); if (k === 'late' && !dr.arr && attDate === todayIso && dStatus !== 'late') setDr({ ...dr, arr: nowHM() }); }}
                         style={[st.bigSegBtn, { borderColor: K.color + '66' }, on && { backgroundColor: K.color, borderColor: K.color }]}>
                         <Ionicons name={K.icon} size={20} color={on ? '#0A0A12' : K.color} />
                         <Text style={[st.bigSegTx, { color: on ? '#0A0A12' : C.text }]} numberOfLines={1}>{t.st[k]}</Text>
@@ -923,29 +1147,76 @@ export default function App() {
                     );
                   })}
                 </View>
-                {dStatus !== 'none' && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-                    <TextInput value={noteDraft} onChangeText={setNoteDraft} placeholder={t.notePh} placeholderTextColor={C.muted}
-                      style={[st.input, { flex: 1, paddingVertical: 8 }]} onEndEditing={() => saveNote(detail.id, noteDraft)} />
-                    <TouchableOpacity onPress={() => saveNote(detail.id, noteDraft)} style={[st.noteSave, { backgroundColor: STATUS[dStatus].color }]}>
-                      <Ionicons name="checkmark" size={18} color="#0A0A12" />
-                    </TouchableOpacity>
+
+                {dStatus === 'leave' && (
+                  <View>
+                    <SecTitle icon="document-text" text={t.leaveType} color={STATUS.leave.color} />
+                    <View style={st.wrap}>
+                      {LTYPES.map((k) => (
+                        <Chip key={k} icon={LT_ICON[k]} label={t.lt[k]} active={dRec.lt === k} color={STATUS.leave.color} onPress={() => patchRec(detail, { lt: k })} />
+                      ))}
+                    </View>
                   </View>
                 )}
 
-                <Text style={st.dSec}>{t.week}</Text>
-                <View style={st.weekRow}>
-                  {week.map((x) => (
-                    <TouchableOpacity key={x.d} onPress={() => { setAttDate(x.d); const r = data.att[x.d] && data.att[x.d][detail.id]; setNoteDraft(r ? r.n || '' : ''); }} style={st.weekCell}>
-                      <View style={[st.weekDot, { backgroundColor: x.s === 'none' ? C.card2 : STATUS[x.s].color, borderColor: x.d === attDate ? C.text : 'transparent' }]}>
-                        {x.s !== 'none' ? <Ionicons name={STATUS[x.s].icon} size={14} color="#0A0A12" /> : null}
-                      </View>
-                      <Text style={st.weekTx}>{num(parse(x.d).getDate())}</Text>
-                    </TouchableOpacity>
+                {dStatus === 'late' && (
+                  <View>
+                    <SecTitle icon="alarm" text={t.arrival} color={STATUS.late.color} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <TextInput value={dr.arr} onChangeText={(v) => setDr({ ...dr, arr: v })} placeholder="06:15" placeholderTextColor={C.muted}
+                        keyboardType="numbers-and-punctuation" style={[st.input, st.timeIn]} />
+                      <TouchableOpacity onPress={() => setDr({ ...dr, arr: nowHM() })} style={st.nowBtn}><Ionicons name="time" size={16} color={C.text} /></TouchableOpacity>
+                      <Text style={[st.calcTx, { color: STATUS.late.color }]}>{t.lateBy} {num(drLate)} {t.min}</Text>
+                    </View>
+                    <Text style={st.smallMuted}>{t.time}: {detail.time || '—'}</Text>
+                  </View>
+                )}
+
+                <SecTitle icon="flash" text={`${t.ot}`} color={C.yellow} />
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={{ flex: 1, marginRight: 6 }}>
+                    <Text style={st.fLbl}>{t.otIn}</Text>
+                    <TextInput value={dr.oi} onChangeText={(v) => setDr({ ...dr, oi: v })} placeholder={shiftEnd(detail) || '15:00'} placeholderTextColor={C.muted}
+                      keyboardType="numbers-and-punctuation" style={st.input} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 6 }}>
+                    <Text style={st.fLbl}>{t.otOut}</Text>
+                    <TextInput value={dr.oo} onChangeText={(v) => setDr({ ...dr, oo: v })} placeholder="18:00" placeholderTextColor={C.muted}
+                      keyboardType="numbers-and-punctuation" style={st.input} />
+                  </View>
+                  <View style={st.otTotal}>
+                    <Text style={st.otTotalN}>{num(hrs(drOt))}</Text>
+                    <Text style={st.otTotalL}>{t.hrs}</Text>
+                  </View>
+                </View>
+                <View style={[st.wrap, { marginTop: 8, marginBottom: 0 }]}>
+                  {[1, 2, 3, 4].map((h) => (
+                    <Chip key={h} icon="add" label={`${num(h)} ${t.hrs}`} color={C.yellow} onPress={() => quickOt(detail, h)} />
                   ))}
+                  {(dr.oi || dr.oo) ? <Chip icon="trash" label={t.clearOt} color={C.red} onPress={() => clearOt(detail)} /> : null}
                 </View>
 
-                <Text style={st.dSec}>{t.month}</Text>
+                <SecTitle icon="create" text={t.note} color={C.cyan} />
+                <TextInput value={dr.n} onChangeText={(v) => setDr({ ...dr, n: v })} placeholder={t.notePh} placeholderTextColor={C.muted} style={st.input} />
+
+                <TouchableOpacity onPress={() => saveDr(detail)} style={[st.bigBtn, { backgroundColor: flash ? C.green : dColor }]}>
+                  <Ionicons name={flash ? 'checkmark-circle' : 'save'} size={18} color="#0A0A12" />
+                  <Text style={st.bigBtnTx}>{flash ? t.saved : t.saveRec}</Text>
+                </TouchableOpacity>
+
+                <SecTitle icon="calendar" text={`${t.calendar} • ${fmtMonth(attDate.slice(0, 7), lang)}`} />
+                <View style={st.calWrap}>
+                  {t.wdS.map((x, i) => <Text key={'h' + i} style={st.calHead}>{x}</Text>)}
+                  {cal.map((c, i) => c ? (
+                    <TouchableOpacity key={c.iso} style={st.calCell} onPress={() => { setAttDate(c.iso); loadDr(detail.id, c.iso); }}>
+                      <View style={[st.calDot, { backgroundColor: c.s === 'none' ? C.card2 : STATUS[c.s].color, borderColor: c.iso === attDate ? C.text : c.iso === todayIso ? C.amber : 'transparent' }]}>
+                        <Text style={[st.calTx, { color: c.s === 'none' ? C.muted : '#0A0A12' }]}>{num(c.d)}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ) : <View key={'e' + i} style={st.calCell} />)}
+                </View>
+
+                <SecTitle icon="stats-chart" text={t.month} />
                 <View style={st.monthRow}>
                   {SEG.map((k) => (
                     <View key={k} style={st.monthCell}>
@@ -954,14 +1225,35 @@ export default function App() {
                     </View>
                   ))}
                 </View>
+                <View style={[st.monthRow, { marginTop: 6 }]}>
+                  <View style={st.monthCell}><Text style={[st.monthN, { color: C.yellow }]}>{num(hrs(monthOt))}</Text><Text style={st.monthL}>{t.otHours}</Text></View>
+                  <View style={st.monthCell}><Text style={[st.monthN, { color: STATUS.late.color }]}>{num(monthLate)}</Text><Text style={st.monthL}>{t.lateTotal}</Text></View>
+                </View>
 
-                <Text style={st.dSec}>{t.names}</Text>
+                <SecTitle icon="document-text" text={`${t.yearUse} (${lang === 'th' ? +attDate.slice(0, 4) + 543 : num(attDate.slice(0, 4))})`} color={STATUS.leave.color} />
+                <View style={st.dBox}>
+                  {LTYPES.map((k) => {
+                    const used = yearLeave[k] || 0; const qt = data.quota[k];
+                    return (
+                      <View key={k} style={st.ltRow}>
+                        <Ionicons name={LT_ICON[k]} size={14} color={STATUS.leave.color} />
+                        <Text style={st.ltName}>{t.lt[k]}</Text>
+                        {qt ? (
+                          <View style={st.ltTrack}><View style={[st.ltFill, { width: `${Math.min(100, (used / qt) * 100)}%`, backgroundColor: used > qt ? C.red : STATUS.leave.color }]} /></View>
+                        ) : <View style={{ flex: 1 }} />}
+                        <Text style={[st.ltNum, used > (qt || 999) && { color: C.red }]}>{num(used)}{qt ? `/${num(qt)}` : ''}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+
+                <SecTitle icon="language" text={t.names} />
                 <View style={st.dBox}>
                   <Text style={st.dLine}><Text style={st.dK}>MM  </Text>{detail.mm || '—'}</Text>
                   <Text style={st.dLine}><Text style={st.dK}>TH  </Text>{detail.th || '—'}</Text>
                   <Text style={st.dLine}><Text style={st.dK}>EN  </Text>{detail.en || '—'}</Text>
                 </View>
-                <Text style={st.dSec}>{t.jobAll}</Text>
+                <SecTitle icon="construct" text={t.jobAll} />
                 <View style={st.dBox}>
                   <Text style={st.dLine}><Text style={st.dK}>MM  </Text>{jobName(detail.job, 'mm')}</Text>
                   <Text style={st.dLine}><Text style={st.dK}>TH  </Text>{jobName(detail.job, 'th')}</Text>
@@ -975,7 +1267,7 @@ export default function App() {
                 </View>
 
                 {admin && (
-                  <View style={{ flexDirection: 'row', marginTop: 6 }}>
+                  <View style={{ flexDirection: 'row', marginTop: 6, marginBottom: 10 }}>
                     <TouchableOpacity style={[st.aBtn, { backgroundColor: C.amber }]} onPress={() => openEdit(detail)}>
                       <Ionicons name="create" size={16} color="#0A0A12" /><Text style={st.aTx}>{t.edit}</Text>
                     </TouchableOpacity>
@@ -996,6 +1288,132 @@ export default function App() {
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* ---------- BUS ---------- */}
+      <Modal visible={busOpen} transparent animationType="slide" onRequestClose={() => setBusOpen(false)}>
+        <View style={st.overlay}>
+          <View style={st.sheet}>
+            <View style={st.grab} />
+            <Text style={st.dName}>{t.busList}</Text>
+            <Text style={st.dId}>{shift === 1 ? t.s1 : t.s2} • {fmtDate(attDate, lang)}</Text>
+            <ScrollView style={{ maxHeight: 460 }}>
+              {['R', 'P'].map((b) => {
+                const ws = busRiders(b); const col = b === 'R' ? C.green : C.cyan;
+                return (
+                  <View key={b} style={[st.busCard, { borderColor: col + '66' }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                      <Ionicons name={b === 'R' ? 'bus' : 'boat'} size={20} color={col} />
+                      <Text style={[st.busName, { color: col }]}>{b === 'R' ? t.busR : t.busP}</Text>
+                      <View style={[st.secBadge, { backgroundColor: col }]}><Text style={st.secN}>{num(ws.length)}</Text></View>
+                    </View>
+                    {ws.length ? ws.map((w, i) => (
+                      <View key={w.id} style={st.busRow}>
+                        <Text style={st.busIdx}>{num(i + 1)}</Text>
+                        <Ionicons name={STATUS[stOf(w.id)].icon} size={14} color={STATUS[stOf(w.id)].color} />
+                        <Text style={st.busWho} numberOfLines={1}>{nameOf(w, lang)}</Text>
+                        <Text style={st.busTime}>{shiftStart(w)}</Text>
+                      </View>
+                    )) : <Text style={st.smallMuted}>{t.noRiders}</Text>}
+                  </View>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity onPress={shareBus} style={[st.bigBtn, { backgroundColor: C.green }]}>
+              <Ionicons name="share-social" size={18} color="#0A0A12" /><Text style={st.bigBtnTx}>{t.share}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={st.closeBtn} onPress={() => setBusOpen(false)}><Ionicons name="close" size={22} color={C.text} /></TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ---------- REPORT ---------- */}
+      <Modal visible={repOpen} animationType="slide" onRequestClose={() => setRepOpen(false)}>
+        <SafeAreaView style={st.root}>
+          <View style={[st.top, { paddingTop: Platform.OS === 'android' ? 36 : 8 }]}>
+            <TouchableOpacity onPress={() => setRepOpen(false)} style={st.iconBtn}><Ionicons name="close" size={20} color={C.text} /></TouchableOpacity>
+            <Text style={[st.title, { flex: 1, marginLeft: 12, fontSize: 20 }]}>{t.report}</Text>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 60 }}>
+            <View style={st.dateBar}>
+              <TouchableOpacity onPress={() => setRepYm(addMonths(repYm, -1))} style={st.dateArrow}><Ionicons name="chevron-back" size={22} color={C.text} /></TouchableOpacity>
+              <Text style={[st.dateBig, { flex: 1, textAlign: 'center' }]}>{fmtMonth(repYm, lang)}</Text>
+              <TouchableOpacity onPress={() => setRepYm(addMonths(repYm, 1))} style={st.dateArrow}><Ionicons name="chevron-forward" size={22} color={C.text} /></TouchableOpacity>
+            </View>
+            <View style={st.wrap}>
+              <Chip label={t.shiftAll} active={repShift === 'all'} color={C.pink} onPress={() => setRepShift('all')} />
+              <Chip label={t.s1} icon="sunny" active={repShift === 1} color={C.amber} onPress={() => setRepShift(1)} />
+              <Chip label={t.s2} icon="moon" active={repShift === 2} color={C.violet} onPress={() => setRepShift(2)} />
+            </View>
+            {(() => {
+              const tot = { work: 0, absent: 0, leave: 0, off: 0, ot: 0, late: 0 };
+              repWorkers.forEach((w) => { const a = repAgg[w.id]; if (!a) return; tot.work += a.present + a.late; tot.absent += a.absent; tot.leave += a.leave; tot.off += a.off; tot.ot += a.otMin; tot.late += a.lateMin; });
+              const cells = [
+                ['briefcase', C.green, num(tot.work), t.workDays], ['close-circle', C.red, num(tot.absent), t.st.absent],
+                ['document-text', STATUS.leave.color, num(tot.leave), t.st.leave], ['bed', STATUS.off.color, num(tot.off), t.st.off],
+                ['flash', C.yellow, num(hrs(tot.ot)), t.otHours], ['alarm', STATUS.late.color, num(tot.late), t.lateTotal],
+              ];
+              const anyData = tot.work + tot.absent + tot.leave + tot.off > 0;
+              const sorted = [...repWorkers].filter((w) => repAgg[w.id]).sort((a, b) => (repAgg[b.id].absent - repAgg[a.id].absent) || (repAgg[b.id].leave - repAgg[a.id].leave) || (repAgg[b.id].otMin - repAgg[a.id].otMin));
+              return (
+                <View>
+                  <View style={st.tiles}>
+                    {cells.map(([ic, col, n, l]) => (
+                      <View key={l} style={[st.tile, { borderColor: col + '55' }]}>
+                        <Ionicons name={ic} size={16} color={col} />
+                        <Text style={[st.tileN, { color: col }]}>{n}</Text>
+                        <Text style={st.tileL} numberOfLines={1}>{l}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <View style={st.actRow}>
+                    <TouchableOpacity onPress={exportCsv} style={[st.actBtn, { backgroundColor: C.green }]}>
+                      <Ionicons name="grid" size={16} color="#0A0A12" /><Text style={st.actTx} numberOfLines={1}>{t.exportCsv}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={shareMonthText} style={[st.actBtn, { backgroundColor: C.cyan }]}>
+                      <Ionicons name="chatbubbles" size={16} color="#0A0A12" /><Text style={st.actTx} numberOfLines={1}>{t.shareTxt}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {!anyData && <Text style={[st.smallMuted, { textAlign: 'center', marginTop: 16 }]}>{t.noData}</Text>}
+                  {anyData && sorted.map((w, i) => {
+                    const a = repAgg[w.id]; const warn = data.warnAbsent > 0 && a.absent >= data.warnAbsent;
+                    return (
+                      <View key={w.id} style={[st.repRow, warn && { borderColor: C.yellow + '88' }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Text style={st.busIdx}>{num(i + 1)}</Text>
+                          <Text style={st.repName} numberOfLines={1}>{nameOf(w, lang)}</Text>
+                          {warn && <Ionicons name="warning" size={14} color={C.yellow} />}
+                          <Text style={st.repId}>{w.id}</Text>
+                        </View>
+                        <View style={st.repStats}>
+                          {[['checkmark-circle', C.green, a.present + a.late], ['close-circle', C.red, a.absent], ['document-text', STATUS.leave.color, a.leave],
+                            ['bed', STATUS.off.color, a.off], ['alarm', STATUS.late.color, a.lateMin], ['flash', C.yellow, hrs(a.otMin)]].map(([ic, col, v], j) => (
+                            <View key={j} style={st.repStat}><Ionicons name={ic} size={12} color={col} /><Text style={[st.repStatTx, { color: col }]}>{num(v)}</Text></View>
+                          ))}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            })()}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* ---------- PASTE IMPORT ---------- */}
+      <Modal visible={pasteOpen} transparent animationType="fade" onRequestClose={() => setPasteOpen(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[st.overlay, { justifyContent: 'center', padding: 20 }]}>
+          <View style={st.pinCard}>
+            <Text style={st.pinT}>{t.paste}</Text>
+            <TextInput value={pasteTx} onChangeText={setPasteTx} multiline placeholder={t.pastePh} placeholderTextColor={C.muted}
+              style={[st.input, { minHeight: 180, maxHeight: 300, textAlignVertical: 'top', fontSize: 12 }]} />
+            <View style={{ flexDirection: 'row', marginTop: 12 }}>
+              <TouchableOpacity style={[st.aBtn, { backgroundColor: C.card2 }]} onPress={() => setPasteOpen(false)}><Text style={[st.aTx, { color: C.text }]}>{t.cancel}</Text></TouchableOpacity>
+              <TouchableOpacity style={[st.aBtn, { backgroundColor: C.amber }]} onPress={() => applyImport(pasteTx)}><Text style={st.aTx}>{t.importBtn}</Text></TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* ---------- PIN ---------- */}
       <Modal visible={pinOpen} transparent animationType="fade" onRequestClose={() => setPinOpen(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[st.overlay, { justifyContent: 'center', padding: 24 }]}>
@@ -1009,9 +1427,7 @@ export default function App() {
               <TouchableOpacity style={[st.aBtn, { backgroundColor: C.card2 }]} onPress={() => { setPinOpen(false); setPinIn(''); }}>
                 <Text style={[st.aTx, { color: C.text }]}>{t.cancel}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[st.aBtn, { backgroundColor: C.amber }]} onPress={tryLogin}>
-                <Text style={st.aTx}>{t.enter}</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={[st.aBtn, { backgroundColor: C.amber }]} onPress={tryLogin}><Text style={st.aTx}>{t.enter}</Text></TouchableOpacity>
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -1033,37 +1449,31 @@ export default function App() {
                 <Field label={t.nameTh} value={form.th} onChangeText={(v) => setForm({ ...form, th: v })} />
                 <Field label={t.nameEn} value={form.en} onChangeText={(v) => setForm({ ...form, en: v })} />
                 <Field label={t.time + ' (HH:MM-HH:MM)'} value={form.time} onChangeText={(v) => setForm({ ...form, time: v })} placeholder="06:00-15:00" />
-
                 <Text style={st.fLbl}>{t.shiftLbl}</Text>
                 <View style={st.wrap}>
                   <Chip label={t.s1} icon="sunny" active={form.shift === 1} color={C.amber} onPress={() => setForm({ ...form, shift: 1 })} />
                   <Chip label={t.s2} icon="moon" active={form.shift === 2} color={C.violet} onPress={() => setForm({ ...form, shift: 2 })} />
                 </View>
-
                 <Text style={st.fLbl}>{t.bus}</Text>
                 <View style={st.wrap}>
                   <Chip label={t.noBus} active={form.bus === ''} onPress={() => setForm({ ...form, bus: '' })} />
                   <Chip label={t.busR} icon="bus" active={form.bus === 'R'} color={C.green} onPress={() => setForm({ ...form, bus: 'R' })} />
                   <Chip label={t.busP} icon="boat" active={form.bus === 'P'} color={C.cyan} onPress={() => setForm({ ...form, bus: 'P' })} />
                 </View>
-
                 <Text style={st.fLbl}>{t.noteLbl}</Text>
                 <View style={st.wrap}>
                   {['', 'new', 'leave', 'from1', 'from2'].map((n) => (
                     <Chip key={n || 'none'} label={n ? noteLabel(n) : t.none} active={form.note === n} color={C.pink} onPress={() => setForm({ ...form, note: n })} />
                   ))}
                 </View>
-
                 <Text style={st.fLbl}>{t.job}</Text>
                 <View style={st.wrap}>
                   {Object.keys(JOBS).map((k) => (
                     <Chip key={k} label={jobName(k, lang)} active={form.job === k} color={C.amber} onPress={() => setForm({ ...form, job: k })} />
                   ))}
                 </View>
-
                 <TouchableOpacity onPress={saveForm} style={[st.bigBtn, { backgroundColor: C.amber }]}>
-                  <Ionicons name="save" size={18} color="#0A0A12" />
-                  <Text style={st.bigBtnTx}>{t.save}</Text>
+                  <Ionicons name="save" size={18} color="#0A0A12" /><Text style={st.bigBtnTx}>{t.save}</Text>
                 </TouchableOpacity>
               </ScrollView>
             </KeyboardAvoidingView>
@@ -1082,25 +1492,60 @@ export default function App() {
                 <TouchableOpacity onPress={saveSettings} style={[st.iconBtn, { backgroundColor: C.amber, borderColor: C.amber }]}><Ionicons name="checkmark" size={20} color="#0A0A12" /></TouchableOpacity>
               </View>
               <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
-                <View style={st.switchRow}>
-                  <Ionicons name="lock-closed" size={18} color={C.amber} />
-                  <Text style={st.switchTx}>{t.lockAtt}</Text>
-                  <Switch value={sForm.lockAtt} onValueChange={(v) => setSForm({ ...sForm, lockAtt: v })}
-                    trackColor={{ false: C.line, true: C.amber }} thumbColor={C.text} />
+                <SecTitle icon="cloud" text={t.dataSec} color={C.cyan} />
+                <View style={st.setCard}>
+                  <Text style={st.smallMuted}>
+                    {t.lastBackup}: {data.lastBackup ? `${fmtDate(data.lastBackup, lang)} (${num(backupAge)} ${t.daysAgo})` : t.never}
+                  </Text>
+                  <Text style={[st.smallMuted, { marginBottom: 4 }]}>{t.backupHint}</Text>
+                  <TouchableOpacity onPress={doBackup} style={[st.bigBtn, { backgroundColor: C.cyan }]}>
+                    <Ionicons name="cloud-upload" size={18} color="#0A0A12" /><Text style={st.bigBtnTx}>{t.backup}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={importFromFile} style={[st.bigBtn, { backgroundColor: C.card2, borderWidth: 1, borderColor: C.cyan }]}>
+                    <Ionicons name="cloud-download" size={18} color={C.cyan} /><Text style={[st.bigBtnTx, { color: C.cyan }]}>{t.restore}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setPasteOpen(true)} style={[st.bigBtn, { backgroundColor: C.card2 }]}>
+                    <Ionicons name="clipboard" size={18} color={C.text} /><Text style={[st.bigBtnTx, { color: C.text }]}>{t.paste}</Text>
+                  </TouchableOpacity>
                 </View>
-                <Field label={t.shiftSup} value={sForm.shiftPhone} onChangeText={(v) => setSForm({ ...sForm, shiftPhone: v })} keyboardType="phone-pad" />
-                <Field label={t.lineSup} value={sForm.linePhone} onChangeText={(v) => setSForm({ ...sForm, linePhone: v })} keyboardType="phone-pad" />
-                {['mm', 'th', 'en'].map((l) => (
-                  <Field key={l} label={`${t.rulesLbl} (${l.toUpperCase()})`} multiline value={sForm.rules[l]}
-                    onChangeText={(v) => setSForm({ ...sForm, rules: { ...sForm.rules, [l]: v } })} />
-                ))}
-                <Field label={t.newPin} value={sForm.pin} onChangeText={(v) => setSForm({ ...sForm, pin: v })} keyboardType="number-pad" secureTextEntry maxLength={8} />
+
+                <SecTitle icon="document-text" text={t.leaveSec} color={STATUS.leave.color} />
+                <View style={st.setCard}>
+                  <Text style={st.fLbl}>{t.quota}</Text>
+                  <View style={{ flexDirection: 'row' }}>
+                    {[['qs', 'sick'], ['qp', 'personal'], ['qa', 'annual']].map(([k, lt]) => (
+                      <View key={k} style={{ flex: 1, marginHorizontal: 3 }}>
+                        <Text style={[st.smallMuted, { textAlign: 'center' }]} numberOfLines={1}>{t.lt[lt]}</Text>
+                        <TextInput value={sForm[k]} onChangeText={(v) => setSForm({ ...sForm, [k]: v })} keyboardType="number-pad" style={[st.input, { textAlign: 'center' }]} />
+                      </View>
+                    ))}
+                  </View>
+                  <View style={{ height: 12 }} />
+                  <Field label={t.warnLbl} value={sForm.wa} onChangeText={(v) => setSForm({ ...sForm, wa: v })} keyboardType="number-pad" />
+                </View>
+
+                <SecTitle icon="call" text={t.contactSec} color={C.green} />
+                <View style={st.setCard}>
+                  <Field label={t.shiftSup} value={sForm.shiftPhone} onChangeText={(v) => setSForm({ ...sForm, shiftPhone: v })} keyboardType="phone-pad" />
+                  <Field label={t.lineSup} value={sForm.linePhone} onChangeText={(v) => setSForm({ ...sForm, linePhone: v })} keyboardType="phone-pad" />
+                  {['mm', 'th', 'en'].map((l) => (
+                    <Field key={l} label={`${t.rulesLbl} (${l.toUpperCase()})`} multiline value={sForm.rules[l]}
+                      onChangeText={(v) => setSForm({ ...sForm, rules: { ...sForm.rules, [l]: v } })} />
+                  ))}
+                </View>
+
+                <SecTitle icon="shield-checkmark" text={t.secSec} color={C.amber} />
+                <View style={st.setCard}>
+                  <View style={st.switchRow}>
+                    <Ionicons name="lock-closed" size={18} color={C.amber} />
+                    <Text style={st.switchTx}>{t.lockAtt}</Text>
+                    <Switch value={sForm.lockAtt} onValueChange={(v) => setSForm({ ...sForm, lockAtt: v })} trackColor={{ false: C.line, true: C.amber }} thumbColor={C.text} />
+                  </View>
+                  <Field label={t.newPin} value={sForm.pin} onChangeText={(v) => setSForm({ ...sForm, pin: v })} keyboardType="number-pad" secureTextEntry maxLength={8} />
+                </View>
 
                 <TouchableOpacity onPress={saveSettings} style={[st.bigBtn, { backgroundColor: C.amber }]}>
                   <Ionicons name="save" size={18} color="#0A0A12" /><Text style={st.bigBtnTx}>{t.save}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={resetWorkers} style={[st.bigBtn, { backgroundColor: C.card2, borderWidth: 1, borderColor: C.red }]}>
-                  <Ionicons name="people" size={18} color={C.red} /><Text style={[st.bigBtnTx, { color: C.red }]}>{t.reset}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={clearAllAtt} style={[st.bigBtn, { backgroundColor: C.card2, borderWidth: 1, borderColor: C.red }]}>
                   <Ionicons name="trash" size={18} color={C.red} /><Text style={[st.bigBtnTx, { color: C.red }]}>{t.clearAll}</Text>
@@ -1132,6 +1577,8 @@ const st = StyleSheet.create({
 
   adminBar: { marginHorizontal: 16, marginBottom: 10, backgroundColor: C.amber, borderRadius: 10, paddingVertical: 5, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
   adminBarTx: { color: '#0A0A12', fontWeight: '900', marginLeft: 6, letterSpacing: 2, fontSize: 12, lineHeight: 20 },
+  remind: { marginHorizontal: 16, marginBottom: 10, backgroundColor: C.cyan, borderRadius: 14, padding: 10, flexDirection: 'row', alignItems: 'center' },
+  remindTx: { color: '#0A0A12', fontWeight: '800', marginLeft: 8, flex: 1, fontSize: 12, lineHeight: 20 },
 
   dateBar: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 10, backgroundColor: C.card, borderRadius: 20, padding: 6, borderWidth: 1, borderColor: C.line },
   dateArrow: { width: 44, height: 44, borderRadius: 14, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center' },
@@ -1160,6 +1607,8 @@ const st = StyleSheet.create({
   actRow: { flexDirection: 'row', marginTop: 4 },
   actBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 14, paddingVertical: 11, marginHorizontal: 3, paddingHorizontal: 6 },
   actTx: { color: '#0A0A12', fontWeight: '900', fontSize: 12, marginLeft: 5, lineHeight: 20, flexShrink: 1 },
+  busStrip: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card2, borderRadius: 14, padding: 10, marginTop: 10 },
+  busStripTx: { color: C.text, flex: 1, marginLeft: 8, fontSize: 12, lineHeight: 20 },
 
   notice: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, backgroundColor: C.card2, borderRadius: 14, padding: 12 },
   noticeT: { color: C.text, fontWeight: '700', flex: 1, marginLeft: 8, lineHeight: 22 },
@@ -1171,7 +1620,6 @@ const st = StyleSheet.create({
 
   searchBox: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 12, marginBottom: 10, backgroundColor: C.card, borderRadius: 16, paddingHorizontal: 12, borderWidth: 1, borderColor: C.line },
   searchIn: { flex: 1, color: C.text, paddingVertical: 11, marginLeft: 8, fontSize: 14 },
-
   chip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: C.line, backgroundColor: C.card, marginRight: 6, marginBottom: 6 },
   chipTx: { color: C.text, fontSize: 12, lineHeight: 20 },
   hint: { color: C.muted, fontSize: 11, marginHorizontal: 16, marginBottom: 4, lineHeight: 18 },
@@ -1190,38 +1638,60 @@ const st = StyleSheet.create({
   name: { color: C.text, fontSize: 16, fontWeight: '800', lineHeight: 26, flexShrink: 1 },
   subName: { color: C.muted, fontSize: 11, lineHeight: 18 },
   rowTags: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 },
-  rowNote: { fontSize: 12, marginTop: 4, lineHeight: 20 },
-  tag: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2, marginRight: 4, marginTop: 3 },
+  infoRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', marginTop: 2 },
+  rowNote: { fontSize: 12, marginTop: 3, lineHeight: 20, flexShrink: 1 },
+  tag: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2, marginRight: 4, marginTop: 3 },
   tagTx: { fontSize: 11, fontWeight: '700', lineHeight: 18 },
   timeBox: { alignItems: 'center', marginLeft: 8, minWidth: 48 },
   timeTx: { color: C.text, fontWeight: '800', fontSize: 13, marginTop: 2 },
   timeTx2: { color: C.muted, fontSize: 11 },
-
   seg: { flexDirection: 'row', marginTop: 10 },
   segBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 7, marginHorizontal: 2, borderRadius: 11, borderWidth: 1, backgroundColor: C.card2 },
   segTx: { fontSize: 11, marginLeft: 3, fontWeight: '700', lineHeight: 18, flexShrink: 1 },
 
   fab: { position: 'absolute', right: 20, bottom: 30, width: 60, height: 60, borderRadius: 20, alignItems: 'center', justifyContent: 'center', elevation: 8 },
 
+  welcome: { margin: 16, marginTop: 20, padding: 20, backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.line, alignItems: 'center' },
+  welcomeIcon: { width: 76, height: 76, borderRadius: 26, backgroundColor: C.amber, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  welcomeT: { color: C.text, fontSize: 20, fontWeight: '900', textAlign: 'center', lineHeight: 32 },
+  welcomeS: { color: C.muted, fontSize: 13, textAlign: 'center', lineHeight: 22, marginTop: 6, marginBottom: 6 },
+
   overlay: { flex: 1, backgroundColor: '#000000AA', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: C.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: 30, borderWidth: 1, borderColor: C.line },
+  sheet: { backgroundColor: C.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingBottom: 24, borderWidth: 1, borderColor: C.line },
   grab: { width: 44, height: 5, borderRadius: 3, backgroundColor: C.line, alignSelf: 'center', marginBottom: 14 },
   bigAvatar: { width: 70, height: 70, borderRadius: 24, borderWidth: 2, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', backgroundColor: C.card2 },
   dName: { color: C.text, fontSize: 22, fontWeight: '900', textAlign: 'center', marginTop: 10, lineHeight: 34 },
-  dId: { color: C.muted, textAlign: 'center', marginBottom: 4 },
-  dSec: { color: C.amber, fontWeight: '800', fontSize: 12, marginTop: 14, marginBottom: 6, lineHeight: 20 },
-  bigSeg: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  dId: { color: C.muted, textAlign: 'center', marginBottom: 6, lineHeight: 20 },
+  dDate: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', backgroundColor: C.card2, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6 },
+  dDateTx: { color: C.text, fontWeight: '800', marginHorizontal: 10, fontSize: 13, lineHeight: 20 },
+  warnBox: { flexDirection: 'row', alignItems: 'center', alignSelf: 'center', backgroundColor: C.yellow, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5, marginTop: 8 },
+  warnBoxTx: { color: '#0A0A12', fontWeight: '900', marginLeft: 6, fontSize: 12, lineHeight: 20 },
+  secTitleRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16, marginBottom: 8 },
+  secTitleTx: { fontWeight: '900', fontSize: 13, marginLeft: 6, lineHeight: 22 },
+  bigSeg: { flexDirection: 'row', justifyContent: 'space-between' },
   bigSegBtn: { width: '19%', alignItems: 'center', paddingVertical: 10, borderRadius: 14, borderWidth: 1, backgroundColor: C.card2 },
   bigSegTx: { fontSize: 10, fontWeight: '800', marginTop: 4, lineHeight: 16 },
-  noteSave: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
-  weekRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  weekCell: { alignItems: 'center', flex: 1 },
-  weekDot: { width: 32, height: 32, borderRadius: 11, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
-  weekTx: { color: C.muted, fontSize: 11, marginTop: 3 },
+  timeIn: { width: 100, textAlign: 'center', fontSize: 18, fontWeight: '800' },
+  nowBtn: { width: 42, height: 44, borderRadius: 12, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
+  calcTx: { marginLeft: 12, fontWeight: '900', fontSize: 14, flex: 1, lineHeight: 22 },
+  smallMuted: { color: C.muted, fontSize: 12, marginTop: 4, lineHeight: 20 },
+  otTotal: { width: 64, height: 64, borderRadius: 18, backgroundColor: C.yellow, alignItems: 'center', justifyContent: 'center', marginLeft: 10, marginTop: 18 },
+  otTotalN: { color: '#0A0A12', fontWeight: '900', fontSize: 20 },
+  otTotalL: { color: '#0A0A12', fontWeight: '800', fontSize: 11, lineHeight: 16 },
+  calWrap: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: C.card2, borderRadius: 16, padding: 6 },
+  calHead: { width: '14.28%', textAlign: 'center', color: C.muted, fontSize: 10, marginBottom: 4, lineHeight: 18 },
+  calCell: { width: '14.28%', alignItems: 'center', marginBottom: 6 },
+  calDot: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
+  calTx: { fontSize: 12, fontWeight: '800' },
   monthRow: { flexDirection: 'row', backgroundColor: C.card2, borderRadius: 14, paddingVertical: 10 },
   monthCell: { flex: 1, alignItems: 'center' },
   monthN: { fontSize: 20, fontWeight: '900' },
   monthL: { color: C.muted, fontSize: 11, lineHeight: 18 },
+  ltRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 4 },
+  ltName: { color: C.text, fontSize: 13, marginLeft: 6, width: 110, lineHeight: 22 },
+  ltTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: C.line, overflow: 'hidden', marginHorizontal: 8 },
+  ltFill: { height: 8, borderRadius: 4 },
+  ltNum: { color: C.text, fontWeight: '900', fontSize: 13, minWidth: 44, textAlign: 'right' },
   dBox: { backgroundColor: C.card2, borderRadius: 14, padding: 12 },
   dLine: { color: C.text, fontSize: 14, lineHeight: 26 },
   dK: { color: C.muted, fontWeight: '900', fontSize: 11 },
@@ -1233,14 +1703,29 @@ const st = StyleSheet.create({
   aTx: { color: '#0A0A12', fontWeight: '900', marginLeft: 5, fontSize: 13, lineHeight: 20 },
   closeBtn: { position: 'absolute', top: 16, right: 16, width: 36, height: 36, borderRadius: 12, backgroundColor: C.card2, alignItems: 'center', justifyContent: 'center' },
 
+  busCard: { backgroundColor: C.card2, borderRadius: 16, padding: 12, marginTop: 10, borderWidth: 1 },
+  busName: { fontWeight: '900', fontSize: 15, flex: 1, marginLeft: 8, lineHeight: 24 },
+  busRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5, borderTopWidth: 1, borderTopColor: C.line },
+  busIdx: { color: C.muted, width: 26, fontSize: 12 },
+  busWho: { color: C.text, flex: 1, marginLeft: 6, fontSize: 14, lineHeight: 22 },
+  busTime: { color: C.muted, fontSize: 12 },
+
+  repRow: { backgroundColor: C.card, borderRadius: 14, padding: 10, marginTop: 8, borderWidth: 1, borderColor: C.line },
+  repName: { color: C.text, fontWeight: '800', flex: 1, fontSize: 14, lineHeight: 22, marginRight: 6 },
+  repId: { color: C.muted, fontSize: 11, marginLeft: 6 },
+  repStats: { flexDirection: 'row', marginTop: 6, paddingLeft: 26 },
+  repStat: { flexDirection: 'row', alignItems: 'center', marginRight: 12 },
+  repStatTx: { fontWeight: '900', fontSize: 12, marginLeft: 3 },
+
   pinCard: { backgroundColor: C.card, borderRadius: 24, padding: 20, borderWidth: 1, borderColor: C.line },
   pinT: { color: C.text, fontSize: 18, fontWeight: '900', textAlign: 'center', marginVertical: 10, lineHeight: 28 },
   pinIn: { backgroundColor: C.card2, color: C.text, fontSize: 24, textAlign: 'center', letterSpacing: 10, borderRadius: 14, paddingVertical: 12, marginBottom: 8 },
 
-  switchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 14, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: C.line },
+  setCard: { backgroundColor: C.card, borderRadius: 18, padding: 12, borderWidth: 1, borderColor: C.line },
+  switchRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   switchTx: { color: C.text, flex: 1, marginLeft: 10, fontWeight: '700', lineHeight: 22 },
   fLbl: { color: C.muted, fontSize: 12, marginBottom: 6, fontWeight: '700', lineHeight: 20 },
-  input: { backgroundColor: C.card, color: C.text, borderRadius: 14, borderWidth: 1, borderColor: C.line, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
+  input: { backgroundColor: C.card2, color: C.text, borderRadius: 14, borderWidth: 1, borderColor: C.line, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12 },
   bigBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 16, paddingVertical: 14, marginTop: 10 },
   bigBtnTx: { color: '#0A0A12', fontWeight: '900', marginLeft: 8, fontSize: 15, lineHeight: 22 },

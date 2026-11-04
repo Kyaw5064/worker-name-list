@@ -9,7 +9,16 @@
     "android": {
       "package": "com.kyaw.workernamelist",
       "versionCode": 1,
-      "adaptiveIcon": { "backgroundColor": "#0A0A12" }
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0A12"
+      }
+    },
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0A12"
     }
   }
 }

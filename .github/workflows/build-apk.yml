@@ -21,14 +21,21 @@ jobs:
         run: |
           npx --yes create-expo-app@latest build-app --template blank --no-install
           cp App.js build-app/App.js
+          mkdir -p build-app/assets && cp -f assets/*.png build-app/assets/
           cd build-app
           npm install
-          npx expo install @react-native-async-storage/async-storage @expo/vector-icons
+          npx expo install @react-native-async-storage/async-storage @expo/vector-icons expo-file-system expo-sharing expo-document-picker expo-splash-screen
           node -e "
             const fs=require('fs');const a=JSON.parse(fs.readFileSync('app.json'));
             a.expo.name='အလုပ်သမားစာရင်း';a.expo.slug='worker-name-list';
+            a.expo.version='1.0.'+process.env.GITHUB_RUN_NUMBER;
             a.expo.userInterfaceStyle='dark';a.expo.backgroundColor='#0A0A12';
-            a.expo.android=Object.assign(a.expo.android||{},{package:'com.kyaw.workernamelist',versionCode:1});
+            a.expo.icon='./assets/icon.png';
+            a.expo.splash={image:'./assets/splash-icon.png',resizeMode:'contain',backgroundColor:'#0A0A12'};
+            a.expo.android=Object.assign(a.expo.android||{},{package:'com.kyaw.workernamelist',versionCode:Number(process.env.GITHUB_RUN_NUMBER)||1,
+              adaptiveIcon:{foregroundImage:'./assets/adaptive-icon.png',backgroundColor:'#0A0A12'}});
+            a.expo.plugins=(a.expo.plugins||[]).filter(p=>(Array.isArray(p)?p[0]:p)!=='expo-splash-screen');
+            a.expo.plugins.push(['expo-splash-screen',{image:'./assets/splash-icon.png',imageWidth:200,resizeMode:'contain',backgroundColor:'#0A0A12'}]);
             fs.writeFileSync('app.json',JSON.stringify(a,null,2));"
       - name: Generate Android project
         working-directory: build-app

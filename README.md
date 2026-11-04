@@ -1,5 +1,7 @@
-# အလုပ်သမား နာမည်စာရင်း
+# အလုပ်သမား နာမည်စာရင်း (Worker Name List)
 
-Betagro ဆိုင်း ၁ / ဆိုင်း ၂ ဝန်ထမ်းစာရင်း (မြန်မာ / ไทย / English)
+ဆိုင်း ၁ / ဆိုင်း ၂ ဝန်ထမ်းစာရင်း + တက်ရောက်မှု၊ OT၊ ခွင့်၊ လချုပ် Report (မြန်မာ / ไทย / English)
 
-APK: Actions tab → နောက်ဆုံး run → Artifacts → worker-name-list-apk
+- **APK**: Releases → နောက်ဆုံး version → `worker-name-list.apk`
+- **ဝန်ထမ်းနာမည်များ** ကို code ထဲမှာ မထည့်ထားပါ။ App ပထမဆုံးဖွင့်ရင် "ဖိုင်မှ သွင်းမည်" ဖြင့် roster `.json` ဖိုင်ကို သွင်းပါ။
+- Admin PIN မူရင်း: `1234` (Admin ဆက်တင်မှာ ပြောင်းပါ)
